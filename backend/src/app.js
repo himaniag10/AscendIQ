@@ -3,12 +3,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 
-import routes from './routes/index.js';
+import routes from './routes/index.routes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
 
-// Set security HTTP headers
+// Security HTTP headers
 app.use(helmet());
 
 // Enable CORS
@@ -18,29 +18,28 @@ app.use(cors({
   credentials: true
 }));
 
-// Development request logging
+// Request logging
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined'));
 }
 
-// Body parsers
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+// Body parser
+app.use(express.json());
 
-// API Router placeholder mount
-app.use('/api', routes);
+// Routes
+app.use('/', routes);
 
-// Handle undefined routes
+// Handle undefined routes (404)
 app.use('*', (req, res, next) => {
-  const err = new Error(`Can't find ${req.originalUrl} on this server!`);
+  const err = new Error(`Route ${req.originalUrl} not found`);
   err.statusCode = 404;
   err.status = 'fail';
   next(err);
 });
 
-// Global Error Handler placeholder
+// Global Error Handler
 app.use(errorHandler);
 
 export default app;
