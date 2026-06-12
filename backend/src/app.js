@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import routes from './routes/index.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use(express.json());
 
 // Routes
 app.use('/', routes);
+app.use('/api/auth', authRoutes);
 
 // Handle undefined routes (404)
 app.use('*', (req, res, next) => {
