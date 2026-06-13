@@ -1,5 +1,6 @@
 import * as authService from '../services/auth.service.js';
 
+
 // -----------------------------------------------------------
 // Helper: Format user object for API response
 // Strips internal fields and returns only safe, public data.
@@ -53,6 +54,36 @@ export const login = async (req, res, next) => {
       message: 'Login successful.',
       token,
       user: formatUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const googleLogin = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) {
+      const error = new Error('ID token is required');
+      error.statusCode = 400;
+      throw error;
+    }
+    const user = await authService.handleGoogleLogin(idToken);
+    const token = authService.generateToken(user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Google login successful.',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        role: user.role,
+        isVerified: user.isVerified,
+        authProvider: user.authProvider,
+        createdAt: user.createdAt,
+      },
     });
   } catch (error) {
     next(error);

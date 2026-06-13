@@ -1,4 +1,6 @@
 import jwt from 'jsonwebtoken';
+import googleAuthPkg from 'google-auth-library';
+const { OAuth2Client } = googleAuthPkg;
 import crypto from 'crypto';
 import User from '../models/user.model.js';
 import sendEmail from '../utils/sendEmail.js';
@@ -281,4 +283,57 @@ export const resetPassword = async (rawToken, newPassword) => {
 
   return user;
 };
+
+// -----------------------------------------------------------
+// Google OAuth Login
+// -----------------------------------------------------------
+export const handleGoogleLogin = async (idToken) => {
+  // Verify token with Google
+  const client = new OAuth2Client();
+  let ticket;
+  try {
+    ticket = await client.verifyIdToken({ idToken, audience: process.env.GOOGLE_CLIENT_ID });
+  } catch (err) {
+    const error = new Error('Invalid Google ID token.');
+    error.statusCode = 401;
+    throw error;
+  }
+  const payload = ticket.getPayload();
+  const { sub: googleId, email, name, picture } = payload;
+
+  // Find existing user by googleId or email
+  let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+  if (user) {
+    // If existing user is not a Google account, optionally link accounts (not implemented)
+    if (user.authProvider !== 'google') {
+      const error = new Error('Account exists with different authentication method.');
+      error.statusCode = 400;
+      throw error;
+    }
+    // Update googleId if missing
+    if (!user.googleId) {
+      user.googleId = googleId;
+      await user.save();
+    }
+    // Ensure email is verified for Google accounts
+    if (!user.isVerified) {
+      user.isVerified = true;
+      await user.save();
+    }
+    return user;
+  }
+
+  // Create new Google user
+  const newUser = await User.create({
+    name: name || 'Google User',
+    email: email.toLowerCase().trim(),
+    authProvider: 'google',
+    googleId,
+    avatar: picture || '',
+    isVerified: true,
+  });
+  return newUser;
+};
+// -----------------------------------------------------------
 

@@ -132,7 +132,6 @@ export const validateResetPassword = (req, res, next) => {
   const { password } = req.body;
   const errors = [];
 
-  // Password: required, min 6 chars
   if (!password || password.length < 6) {
     errors.push('New password is required and must be at least 6 characters.');
   }
@@ -143,4 +142,17 @@ export const validateResetPassword = (req, res, next) => {
 
   next();
 };
+
+export const validateGoogleLogin = (req, res, next) => {
+  const { idToken } = req.body;
+  const errors = [];
+  if (!idToken || typeof idToken !== 'string' || idToken.trim() === '') {
+    errors.push('idToken is required for Google login.');
+  }
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, errors });
+  }
+  next();
+};
+
 

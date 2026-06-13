@@ -7,6 +7,7 @@ import {
   resendOTP,
   forgotPassword,
   resetPassword,
+  googleLogin,
 } from '../controllers/auth.controller.js';
 import {
   validateRegister,
@@ -15,6 +16,7 @@ import {
   validateResendOTP,
   validateForgotPassword,
   validateResetPassword,
+  validateGoogleLogin,
 } from '../validators/auth.validator.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -41,6 +43,7 @@ router.post('/forgot-password', validateForgotPassword, forgotPassword);
 
 // POST /api/auth/reset-password/:token — Reset password with token
 router.post('/reset-password/:token', validateResetPassword, resetPassword);
+router.post('/google-login', validateGoogleLogin, googleLogin);
 
 // -----------------------------------------------------------
 // Protected Routes (valid JWT required)
