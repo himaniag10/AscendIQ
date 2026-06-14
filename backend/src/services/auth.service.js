@@ -288,6 +288,12 @@ export const resetPassword = async (rawToken, newPassword) => {
 // Google OAuth Login
 // -----------------------------------------------------------
 export const handleGoogleLogin = async (idToken) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    const error = new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID on the backend.');
+    error.statusCode = 500;
+    throw error;
+  }
+
   // Verify token with Google
   const client = new OAuth2Client();
   let ticket;
@@ -336,4 +342,3 @@ export const handleGoogleLogin = async (idToken) => {
   return newUser;
 };
 // -----------------------------------------------------------
-

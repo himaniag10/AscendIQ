@@ -87,7 +87,7 @@ export function Navbar() {
                   {['Dashboard', 'Profile', 'Settings'].map((item) => (
                     <Link
                       key={item}
-                      to="/dashboard"
+                      to={item === 'Dashboard' ? '/dashboard' : '/profile'}
                       className="block rounded-lg px-3 py-2 text-sm text-[var(--theme-secondary-text)] hover:bg-[var(--theme-surface-alt)] hover:text-[var(--theme-text)]"
                     >
                       {item}

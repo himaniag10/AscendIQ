@@ -5,6 +5,7 @@ import RegisterPage from '../pages/Auth/RegisterPage.jsx';
 import VerifyOtpPage from '../pages/Auth/VerifyOtpPage.jsx';
 import ForgotPasswordPage from '../pages/Auth/ForgotPasswordPage.jsx';
 import DashboardPage from '../pages/Dashboard/DashboardPage.jsx';
+import ProfilePage from '../pages/Profile/ProfilePage.jsx';
 import { ProtectedRoute } from './ProtectedRoute.jsx';
 
 export function AppRoutes() {
@@ -20,6 +21,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         }
       />

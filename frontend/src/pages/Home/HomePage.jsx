@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button.jsx';
 
-const metrics = [
-  { value: 10000, suffix: '+', label: 'Practice Sessions' },
-  { value: 500, suffix: '+', label: 'Interview Questions' },
-  { value: 92, suffix: '%', label: 'Readiness Improvement' },
-  { value: 50, suffix: '+', label: 'Interview Categories' },
+const foundations = [
+  'Structured interview practice',
+  'AI feedback workflow',
+  'Profile-driven preparation',
+  'Zero-fake analytics policy',
 ];
 
 const features = [
@@ -28,78 +27,34 @@ const steps = [
   ['05', 'Interview Success', 'Track readiness until you are confident for real-world interviews.'],
 ];
 
-function AnimatedMetric({ value, suffix, label }) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    const duration = 900;
-    const start = performance.now();
-    let frame;
-
-    const tick = (time) => {
-      const progress = Math.min((time - start) / duration, 1);
-      setCount(Math.floor(value * progress));
-      if (progress < 1) frame = requestAnimationFrame(tick);
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
-
-  return (
-    <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center shadow-sm">
-      <p className="text-3xl font-semibold text-[var(--theme-text)]">{count.toLocaleString()}{suffix}</p>
-      <p className="mt-2 text-sm font-medium text-[var(--theme-secondary-text)]">{label}</p>
-    </div>
-  );
-}
-
 function DashboardMockup() {
   return (
     <div className="animate-float rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 shadow-[var(--theme-shadow)]">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Readiness Score</p>
-          <p className="mt-1 text-3xl font-semibold text-[var(--theme-text)]">86%</p>
+          <p className="mt-1 text-3xl font-semibold text-[var(--theme-text)]">0%</p>
         </div>
-        <span className="rounded-lg bg-[var(--theme-primary-soft)] px-3 py-2 text-xs font-semibold text-[var(--theme-primary)]">Live AI feedback</span>
+        <span className="rounded-lg bg-[var(--theme-primary-soft)] px-3 py-2 text-xs font-semibold text-[var(--theme-primary)]">Awaiting first interview</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-[var(--theme-surface-alt)] p-4">
           <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Weak Topics</p>
-          <div className="mt-4 space-y-3">
-            {['System design', 'Behavioral depth', 'SQL joins'].map((item, index) => (
-              <div key={item}>
-                <div className="flex justify-between text-xs text-[var(--theme-secondary-text)]">
-                  <span>{item}</span>
-                  <span>{62 + index * 7}%</span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-[var(--theme-border)]">
-                  <div className="h-2 rounded-full bg-[var(--theme-warning)]" style={{ width: `${62 + index * 7}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
+          <p className="mt-4 rounded-lg border border-dashed border-[var(--theme-border-strong)] px-4 py-8 text-center text-sm text-[var(--theme-secondary-text)]">No weak topics yet.</p>
         </div>
         <div className="rounded-xl bg-[var(--theme-surface-alt)] p-4">
           <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Strong Topics</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {['React', 'DSA', 'Projects', 'Communication'].map((topic) => (
-              <span key={topic} className="rounded-lg bg-[var(--theme-surface)] px-3 py-2 text-xs font-semibold text-[var(--theme-secondary-text)]">
-                {topic}
-              </span>
-            ))}
-          </div>
+          <p className="mt-4 rounded-lg border border-dashed border-[var(--theme-border-strong)] px-4 py-8 text-center text-sm text-[var(--theme-secondary-text)]">No strong topics yet.</p>
           <div className="mt-6 rounded-xl bg-[var(--theme-surface)] p-4">
             <p className="text-sm font-semibold text-[var(--theme-text)]">AI Feedback</p>
-            <p className="mt-2 text-sm text-[var(--theme-secondary-text)]">Clarify tradeoffs and give one concrete example before closing.</p>
+            <p className="mt-2 text-sm text-[var(--theme-secondary-text)]">Start your first interview to receive feedback.</p>
           </div>
         </div>
       </div>
       <div className="mt-4 rounded-xl bg-[var(--theme-surface-alt)] p-4">
-        <div className="flex h-28 items-end gap-2">
-          {[38, 54, 48, 66, 72, 80, 86].map((height, index) => (
-            <div key={height} className="flex-1 rounded-t-lg bg-[var(--theme-primary)]" style={{ height: `${height}%`, opacity: 0.55 + index * 0.06 }} />
+        <div className="flex h-28 items-end gap-2 rounded-lg border border-dashed border-[var(--theme-border-strong)] p-4">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="flex-1 rounded-t-lg bg-[var(--theme-border)]" style={{ height: '4px' }} />
           ))}
         </div>
       </div>
@@ -135,7 +90,12 @@ function HomePage() {
 
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid gap-4 md:grid-cols-4">
-          {metrics.map((metric) => <AnimatedMetric key={metric.label} {...metric} />)}
+          {foundations.map((item) => (
+            <div key={item} className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center shadow-sm">
+              <p className="text-base font-semibold text-[var(--theme-text)]">{item}</p>
+              <p className="mt-2 text-sm text-[var(--theme-secondary-text)]">Ready for real user data only.</p>
+            </div>
+          ))}
         </div>
       </section>
 
