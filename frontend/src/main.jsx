@@ -1,4 +1,6 @@
 import React from 'react';
+// Debug: confirm main module execution
+console.log('[dev] main.jsx loaded');
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';

@@ -3,6 +3,9 @@ import {
   getProfileByUserId,
   upsertProfile,
 } from '../services/profile.service.js';
+import { uploadProfileImage, uploadResume as uploadResumeToCloud, deleteCloudinaryAsset } from '../services/cloudinary.service.js';
+import Profile from '../models/profile.model.js';
+import User from '../models/user.model.js';
 
 const formatProfile = (profile, user) => ({
   id: profile?._id || null,
@@ -44,6 +47,117 @@ export const updateMyProfile = async (req, res, next) => {
       message: 'Profile saved successfully.',
       profile: formatProfile(profile, req.user),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// -----------------------------------------------------------
+// Upload avatar
+// -----------------------------------------------------------
+export const uploadAvatar = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error('No file uploaded.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const profile = await Profile.findOne({ user: req.user._id });
+
+    // delete existing asset if present
+    if (profile?.profileImageUrl) {
+      await deleteCloudinaryAsset(profile.profileImageUrl, 'image');
+    } else if (req.user.avatar) {
+      await deleteCloudinaryAsset(req.user.avatar, 'image');
+    }
+
+    const uploadedUrl = await uploadProfileImage(req.file, req.user._id);
+
+    const updatedProfile = await Profile.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: { profileImageUrl: uploadedUrl }, $setOnInsert: { user: req.user._id } },
+      { new: true, upsert: true }
+    );
+
+    // also update user.avatar for consistency
+    await User.findByIdAndUpdate(req.user._id, { $set: { avatar: uploadedUrl } });
+
+    res.status(200).json({ success: true, message: 'Avatar uploaded successfully.', url: uploadedUrl, profile: formatProfile(updatedProfile, { ...req.user, avatar: uploadedUrl }) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// -----------------------------------------------------------
+// Upload resume
+// -----------------------------------------------------------
+export const uploadResume = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error('No file uploaded.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const profile = await Profile.findOne({ user: req.user._id });
+
+    if (profile?.resumeUrl) {
+      await deleteCloudinaryAsset(profile.resumeUrl, 'raw');
+    }
+
+    const uploadedUrl = await uploadResumeToCloud(req.file, req.user._id);
+
+    const updatedProfile = await Profile.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: { resumeUrl: uploadedUrl }, $setOnInsert: { user: req.user._id } },
+      { new: true, upsert: true }
+    );
+
+    res.status(200).json({ success: true, message: 'Resume uploaded successfully.', url: uploadedUrl, profile: formatProfile(updatedProfile, req.user) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// -----------------------------------------------------------
+// Delete avatar
+// -----------------------------------------------------------
+export const deleteAvatar = async (req, res, next) => {
+  try {
+    const profile = await Profile.findOne({ user: req.user._id });
+    const targetUrl = profile?.profileImageUrl || req.user.avatar;
+    if (!targetUrl) {
+      return res.status(200).json({ success: true, message: 'No avatar to delete.' });
+    }
+
+    await deleteCloudinaryAsset(targetUrl, 'image');
+
+    await Profile.findOneAndUpdate({ user: req.user._id }, { $set: { profileImageUrl: '' } }, { new: true });
+    await User.findByIdAndUpdate(req.user._id, { $set: { avatar: '' } });
+
+    res.status(200).json({ success: true, message: 'Avatar deleted.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// -----------------------------------------------------------
+// Delete resume
+// -----------------------------------------------------------
+export const deleteResume = async (req, res, next) => {
+  try {
+    const profile = await Profile.findOne({ user: req.user._id });
+    const targetUrl = profile?.resumeUrl;
+    if (!targetUrl) {
+      return res.status(200).json({ success: true, message: 'No resume to delete.' });
+    }
+
+    await deleteCloudinaryAsset(targetUrl, 'raw');
+
+    await Profile.findOneAndUpdate({ user: req.user._id }, { $set: { resumeUrl: '' } }, { new: true });
+
+    res.status(200).json({ success: true, message: 'Resume deleted.' });
   } catch (error) {
     next(error);
   }
