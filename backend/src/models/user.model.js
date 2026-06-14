@@ -116,21 +116,39 @@ const userSchema = new mongoose.Schema(
     },
 
     /**
-     * passwordResetToken - Hashed token for verifying password reset requests.
-     * We store the hashed token to prevent exposure if the database is read.
+     * passwordResetOtp - One-time numeric code for password recovery.
+     * Stored temporarily until the password is successfully reset.
      */
-    passwordResetToken: {
+    passwordResetOtp: {
       type: String,
       default: null,
     },
 
     /**
-     * passwordResetExpires - Expiration timestamp for the password reset token.
-     * Typically set to 1 hour from generation.
+     * passwordResetOtpExpires - Expiration timestamp for the password recovery OTP.
+     * Typically set to 10 minutes from generation.
      */
-    passwordResetExpires: {
+    passwordResetOtpExpires: {
       type: Date,
       default: null,
+    },
+
+    /**
+     * passwordResetOtpRequestedAt - Time the current recovery OTP was generated.
+     * Used to rate limit OTP requests and prevent duplicate emails.
+     */
+    passwordResetOtpRequestedAt: {
+      type: Date,
+      default: null,
+    },
+
+    /**
+     * passwordResetOtpFailedAttempts - Number of invalid recovery OTP attempts.
+     * Locks the current OTP after repeated failures.
+     */
+    passwordResetOtpFailedAttempts: {
+      type: Number,
+      default: 0,
     },
   },
   {

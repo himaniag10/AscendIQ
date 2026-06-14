@@ -38,11 +38,11 @@ router.post('/verify-otp', validateVerifyOTP, verifyOTP);
 // POST /api/auth/resend-otp — Resend verification OTP
 router.post('/resend-otp', validateResendOTP, resendOTP);
 
-// POST /api/auth/forgot-password — Request password reset link
+// POST /api/auth/forgot-password — Request password recovery OTP
 router.post('/forgot-password', validateForgotPassword, forgotPassword);
 
-// POST /api/auth/reset-password/:token — Reset password with token
-router.post('/reset-password/:token', validateResetPassword, resetPassword);
+// POST /api/auth/reset-password — Reset password using email and OTP
+router.post('/reset-password', validateResetPassword, resetPassword);
 router.post('/google-login', validateGoogleLogin, googleLogin);
 
 // -----------------------------------------------------------

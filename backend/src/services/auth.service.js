@@ -12,6 +12,23 @@ const generateNumericOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
+const hashOTP = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
+
+const clearPasswordResetOTPFields = (user) => {
+  user.passwordResetOtp = null;
+  user.passwordResetOtpExpires = null;
+  user.passwordResetOtpRequestedAt = null;
+  user.passwordResetOtpFailedAttempts = 0;
+};
+
+const ensureLocalAuthProvider = (user) => {
+  if (user.authProvider !== 'local') {
+    const error = new Error('Cannot perform password recovery for a Google OAuth account.');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
 // -----------------------------------------------------------
 // Generate JWT Token
 // Signs a token containing the userId as payload.
@@ -115,10 +132,60 @@ export const loginUser = async (email, password) => {
   return user;
 };
 
-// -----------------------------------------------------------
-// Verify OTP
-// Verifies OTP and marks the account as verified.
-// -----------------------------------------------------------
+const getPasswordResetUser = async (email, otp) => {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    const error = new Error('No account found with that email address.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  ensureLocalAuthProvider(user);
+
+  if (!user.passwordResetOtp || !user.passwordResetOtpExpires || user.passwordResetOtpExpires < new Date()) {
+    clearPasswordResetOTPFields(user);
+    await user.save();
+
+    const error = new Error('Invalid or expired password recovery code.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if ((user.passwordResetOtpFailedAttempts || 0) >= 5) {
+    clearPasswordResetOTPFields(user);
+    await user.save();
+
+    const error = new Error('Too many failed recovery attempts. Request a new code.');
+    error.statusCode = 429;
+    throw error;
+  }
+
+  const hashedOtp = hashOTP(otp);
+  if (hashedOtp !== user.passwordResetOtp) {
+    user.passwordResetOtpFailedAttempts = (user.passwordResetOtpFailedAttempts || 0) + 1;
+
+    if (user.passwordResetOtpFailedAttempts >= 5) {
+      clearPasswordResetOTPFields(user);
+      await user.save();
+
+      const error = new Error('Too many failed recovery attempts. Request a new code.');
+      error.statusCode = 429;
+      throw error;
+    }
+
+    await user.save();
+    const error = new Error('Invalid recovery code. Please try again.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  user.passwordResetOtpFailedAttempts = 0;
+  await user.save();
+  return user;
+};
+
 export const verifyOTP = async (email, otp) => {
   const normalizedEmail = email.toLowerCase().trim();
   const user = await User.findOne({ email: normalizedEmail });
@@ -129,24 +196,28 @@ export const verifyOTP = async (email, otp) => {
     throw error;
   }
 
-  if (user.isVerified) {
-    return user; // Already verified
+  if (user.passwordResetOtp) {
+    await getPasswordResetUser(email, otp);
+    return { user, flow: 'passwordReset' };
   }
 
-  // Check if OTP matches and is not expired
-  if (user.otp !== otp || user.otpExpires < new Date()) {
+  if (user.isVerified) {
+    return { user, flow: 'register' };
+  }
+
+  // Check registration OTP
+  if (!user.otp || !user.otpExpires || user.otp !== otp || user.otpExpires < new Date()) {
     const error = new Error('Invalid or expired verification code.');
     error.statusCode = 400;
     throw error;
   }
 
-  // Update verification status and clear OTP fields
   user.isVerified = true;
   user.otp = null;
   user.otpExpires = null;
   await user.save();
 
-  return user;
+  return { user, flow: 'register' };
 };
 
 // -----------------------------------------------------------
@@ -199,10 +270,10 @@ export const resendOTP = async (email) => {
 };
 
 // -----------------------------------------------------------
-// Forgot Password - Request Reset Link
-// Generates and emails a secure crypt reset token.
+// Forgot Password - Request recovery OTP
+// Generates and emails a secure 6-digit recovery code.
 // -----------------------------------------------------------
-export const forgotPassword = async (email, host) => {
+export const forgotPassword = async (email) => {
   const normalizedEmail = email.toLowerCase().trim();
   const user = await User.findOne({ email: normalizedEmail });
 
@@ -213,72 +284,46 @@ export const forgotPassword = async (email, host) => {
   }
 
   if (user.authProvider !== 'local') {
-    const error = new Error(`Cannot reset password for a Google OAuth account.`);
+    const error = new Error('Cannot reset password for a Google OAuth account.');
     error.statusCode = 400;
     throw error;
   }
 
-  // Generate random crypto reset token
-  const rawToken = crypto.randomBytes(32).toString('hex');
+  const otp = generateNumericOTP();
+  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-  // Store hashed version in DB for security
-  const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-  const tokenExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
-
-  user.passwordResetToken = hashedToken;
-  user.passwordResetExpires = tokenExpires;
+  user.passwordResetOtp = hashedOtp;
+  user.passwordResetOtpExpires = otpExpires;
   await user.save();
-
-  // Create reset link URL
-  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-  const resetUrl = `${protocol}://${host || 'localhost:5000'}/api/auth/reset-password/${rawToken}`;
 
   const message = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f0f0f0; border-radius: 8px;">
       <h2 style="color: #4f46e5; text-align: center;">Reset Your Password</h2>
-      <p>We received a request to reset your password. Click the button below to update your password:</p>
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetUrl}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Reset Password</a>
+      <p>We received a request to reset your password. Use the code below to complete the recovery process:</p>
+      <div style="background-color: #f3f4f6; padding: 15px; border-radius: 6px; text-align: center; margin: 20px 0;">
+        <span style="font-size: 28px; font-weight: bold; letter-spacing: 8px; color: #1f2937;">${otp}</span>
       </div>
-      <p style="word-break: break-all; color: #6b7280; font-size: 14px;">If the button above does not work, copy and paste this URL into your browser:</p>
-      <p style="word-break: break-all; color: #4f46e5; font-size: 14px;">${resetUrl}</p>
-      <p style="color: #6b7280; font-size: 14px; border-top: 1px solid #f0f0f0; padding-top: 15px; margin-top: 20px;">This link is valid for 1 hour. If you did not request a password reset, please ignore this email and your password will remain unchanged.</p>
+      <p style="color: #6b7280; font-size: 14px; text-align: center;">This code is valid for 10 minutes. If you did not request this, please ignore this email.</p>
     </div>
   `;
 
   await sendEmail({
     email: user.email,
-    subject: 'AscendIQ Password Reset Request',
+    subject: 'AscendIQ Password Recovery Code',
     message,
   });
-
-  return rawToken;
 };
 
 // -----------------------------------------------------------
 // Reset Password - Save New Password
-// Verifies raw token against stored hash and updates password.
+// Verifies OTP against stored hash and updates password.
 // -----------------------------------------------------------
-export const resetPassword = async (rawToken, newPassword) => {
-  // Hash the raw token received from client
-  const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+export const resetPassword = async (email, otp, newPassword) => {
+  const user = await getPasswordResetUser(email, otp);
 
-  // Look up user with matching hashed token and unexpired reset time
-  const user = await User.findOne({
-    passwordResetToken: hashedToken,
-    passwordResetExpires: { $gt: new Date() },
-  });
-
-  if (!user) {
-    const error = new Error('Invalid or expired password reset token.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Update password field (will be hashed automatically by pre-save hook!)
   user.password = newPassword;
-  user.passwordResetToken = null;
-  user.passwordResetExpires = null;
+  clearPasswordResetOTPFields(user);
   await user.save();
 
   return user;

@@ -108,7 +108,7 @@ export const getMe = async (req, res, next) => {
 };
 
 // -----------------------------------------------------------
-// @desc    Verify account using 6-digit OTP
+// @desc    Verify account or recovery OTP
 // @route   POST /api/auth/verify-otp
 // @access  Public
 // -----------------------------------------------------------
@@ -116,14 +116,21 @@ export const verifyOTP = async (req, res, next) => {
   try {
     const { email, otp } = req.body;
 
-    const user = await authService.verifyOTP(email, otp);
-    const token = authService.generateToken(user._id);
+    const result = await authService.verifyOTP(email, otp);
 
+    if (result.flow === 'passwordReset') {
+      return res.status(200).json({
+        success: true,
+        message: 'Recovery code verified. Please choose a new password.',
+      });
+    }
+
+    const token = authService.generateToken(result.user._id);
     res.status(200).json({
       success: true,
       message: 'Email verified successfully. Welcome to AscendIQ!',
       token,
-      user: formatUser(user),
+      user: formatUser(result.user),
     });
   } catch (error) {
     next(error);
@@ -151,21 +158,19 @@ export const resendOTP = async (req, res, next) => {
 };
 
 // -----------------------------------------------------------
-// @desc    Send password reset link to user's email
+// @desc    Send password recovery OTP to user's email
 // @route   POST /api/auth/forgot-password
 // @access  Public
 // -----------------------------------------------------------
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-    // Pass the request host so the reset URL is built correctly
-    const host = req.get('host');
 
-    await authService.forgotPassword(email, host);
+    await authService.forgotPassword(email);
 
     res.status(200).json({
       success: true,
-      message: 'Password reset instructions have been sent to your email.',
+      message: 'A password recovery code has been sent to your email.',
     });
   } catch (error) {
     next(error);
@@ -173,16 +178,15 @@ export const forgotPassword = async (req, res, next) => {
 };
 
 // -----------------------------------------------------------
-// @desc    Reset password using token from email link
-// @route   POST /api/auth/reset-password/:token
-// @access  Public (token acts as temporary credential)
+// @desc    Reset password using recovery OTP
+// @route   POST /api/auth/reset-password
+// @access  Public
 // -----------------------------------------------------------
 export const resetPassword = async (req, res, next) => {
   try {
-    const { token } = req.params;
-    const { password } = req.body;
+    const { email, otp, password } = req.body;
 
-    const user = await authService.resetPassword(token, password);
+    const user = await authService.resetPassword(email, otp, password);
     const jwtToken = authService.generateToken(user._id);
 
     res.status(200).json({

@@ -10,6 +10,7 @@ function ForgotPasswordPage() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [passwords, setPasswords] = useState({ password: '', confirmPassword: '' });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(45);
   const inputs = useRef([]);
 
@@ -25,14 +26,18 @@ function ForgotPasswordPage() {
       setError('Enter a valid email address.');
       return;
     }
+
+    setError('');
+    setLoading(true);
     try {
       await authService.forgotPassword(email);
-      setError('');
       setStep(2);
       setTimer(45);
       window.setTimeout(() => inputs.current[0]?.focus(), 50);
     } catch (err) {
-      setError(err.message || 'Unable to start password recovery.');
+      setError(err.response?.data?.errors?.[0] || err.message || 'Unable to start password recovery.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -52,17 +57,28 @@ function ForgotPasswordPage() {
     inputs.current[Math.min(digits.length, 5)]?.focus();
   };
 
-  const submitOtp = (event) => {
+  const submitOtp = async (event) => {
     event.preventDefault();
-    if (otp.join('').length !== 6) {
+    const code = otp.join('');
+
+    if (code.length !== 6) {
       setError('Enter the 6 digit OTP.');
       return;
     }
+
     setError('');
-    setStep(3);
+    setLoading(true);
+    try {
+      await authService.verifyOTP(email, code);
+      setStep(3);
+    } catch (err) {
+      setError(err.response?.data?.errors?.[0] || err.message || 'Unable to verify the OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const submitPassword = (event) => {
+  const submitPassword = async (event) => {
     event.preventDefault();
     if (passwords.password.length < 8) {
       setError('Password must be at least 8 characters.');
@@ -72,8 +88,17 @@ function ForgotPasswordPage() {
       setError('Passwords do not match.');
       return;
     }
+
     setError('');
-    setStep(4);
+    setLoading(true);
+    try {
+      await authService.resetPassword(email, otp.join(''), passwords.password);
+      setStep(4);
+    } catch (err) {
+      setError(err.response?.data?.errors?.[0] || err.message || 'Unable to reset your password. Please check the code and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -96,7 +121,9 @@ function ForgotPasswordPage() {
         {step === 1 && (
           <form onSubmit={submitEmail} className="mt-8 space-y-5">
             <Input label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} error={error} autoComplete="email" />
-            <Button type="submit" className="w-full">Send OTP</Button>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Sending OTP...' : 'Send OTP'}
+            </Button>
           </form>
         )}
 
@@ -121,7 +148,20 @@ function ForgotPasswordPage() {
             {error && <p className="text-sm font-medium text-[var(--theme-danger)]">{error}</p>}
             <div className="flex items-center justify-between text-sm text-[var(--theme-secondary-text)]">
               <span>{timer ? `Resend OTP in ${timer}s` : 'You can resend the OTP now.'}</span>
-              <button type="button" disabled={timer > 0} onClick={() => setTimer(45)} className="font-semibold text-[var(--theme-primary)] disabled:text-[var(--theme-muted-text)]">
+              <button
+                type="button"
+                disabled={timer > 0}
+                onClick={async () => {
+                  try {
+                    await authService.forgotPassword(email);
+                    setError('');
+                    setTimer(45);
+                  } catch (err) {
+                    setError(err.response?.data?.errors?.[0] || err.message || 'Unable to resend OTP.');
+                  }
+                }}
+                className="font-semibold text-[var(--theme-primary)] disabled:text-[var(--theme-muted-text)]"
+              >
                 Resend
               </button>
             </div>

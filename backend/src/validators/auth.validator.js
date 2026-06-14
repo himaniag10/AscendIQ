@@ -129,8 +129,18 @@ export const validateForgotPassword = (req, res, next) => {
 // Validate Reset Password Input
 // -----------------------------------------------------------
 export const validateResetPassword = (req, res, next) => {
-  const { password } = req.body;
+  const { email, otp, password } = req.body;
   const errors = [];
+  const emailRegex = /^\S+@\S+\.\S+$/;
+
+  if (!email || !emailRegex.test(email)) {
+    errors.push('A valid email address is required.');
+  }
+
+  const otpRegex = /^\d{6}$/;
+  if (!otp || !otpRegex.test(otp)) {
+    errors.push('A valid 6-digit recovery code is required.');
+  }
 
   if (!password || password.length < 6) {
     errors.push('New password is required and must be at least 6 characters.');
