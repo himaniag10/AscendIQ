@@ -36,6 +36,82 @@ function SessionSummaryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [cameraStatus, setCameraStatus] = useState('checking');
+  const [micStatus, setMicStatus] = useState('checking');
+  const [envStatus, setEnvStatus] = useState('checking');
+  const [startError, setStartError] = useState('');
+  const [starting, setStarting] = useState(false);
+
+  const requestPermissions = async () => {
+    setCameraStatus('checking');
+    setMicStatus('checking');
+    setEnvStatus('checking');
+    setStartError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setCameraStatus('granted');
+      setMicStatus('granted');
+      setEnvStatus(navigator.onLine ? 'ready' : 'unsupported');
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      console.error('Error requesting permissions:', err);
+      await checkIndividualPermissions();
+    }
+  };
+
+  const checkIndividualPermissions = async () => {
+    let hasVideo = false;
+    let hasAudio = false;
+
+    try {
+      const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      hasVideo = true;
+      vStream.getTracks().forEach(t => t.stop());
+      setCameraStatus('granted');
+    } catch (e) {
+      setCameraStatus('denied');
+    }
+
+    try {
+      const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      hasAudio = true;
+      aStream.getTracks().forEach(t => t.stop());
+      setMicStatus('granted');
+    } catch (e) {
+      setMicStatus('denied');
+    }
+
+    setEnvStatus(navigator.onLine && (hasVideo || hasAudio) ? 'ready' : 'unsupported');
+  };
+
+  useEffect(() => {
+    if (session) {
+      requestPermissions();
+    }
+  }, [session]);
+
+  const handleStartInterview = async () => {
+    setStarting(true);
+    setStartError('');
+    try {
+      const data = await interviewService.startInterview({ sessionId });
+      if (data.success) {
+        navigate(`/interview/${data.sessionId}`, {
+          state: {
+            firstQuestion: data.firstQuestion,
+            session
+          }
+        });
+      } else {
+        setStartError(data.message || 'Failed to start interview.');
+      }
+    } catch (err) {
+      setStartError(err?.response?.data?.message || err.message || 'Failed to start interview.');
+    } finally {
+      setStarting(false);
+    }
+  };
+
   useEffect(() => {
     interviewService.getSession(sessionId)
       .then((data) => setSession(data.session))
@@ -224,6 +300,18 @@ function SessionSummaryPage() {
           letter-spacing: 0.05em;
         }
 
+        .permission-badge--success {
+          background: rgba(34, 197, 94, 0.1) !important;
+          color: #22c55e !important;
+          border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .permission-badge--danger {
+          background: rgba(239, 68, 68, 0.1) !important;
+          color: #ef4444 !important;
+          border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
         .start-btn {
           width: 100%;
           padding: 0.9375rem;
@@ -231,14 +319,13 @@ function SessionSummaryPage() {
           font-size: 1rem;
           font-weight: 600;
           color: white;
-          cursor: not-allowed;
           border: none;
-          opacity: 0.45;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 0.5rem;
           margin-bottom: 0.75rem;
+          transition: opacity 160ms ease, transform 160ms ease;
         }
 
         .coming-soon-note {
@@ -363,9 +450,27 @@ function SessionSummaryPage() {
             />
           </div>
 
-          {/* Camera & Mic Preparation (Placeholder) */}
+          {/* Camera & Mic Preparation */}
           <div className="camera-card">
-            <p className="camera-card__heading">🎙️ Interview Environment</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <p className="camera-card__heading" style={{ margin: 0 }}>🎙️ Interview Environment</p>
+              {(cameraStatus === 'denied' || micStatus === 'denied') && (
+                <button
+                  onClick={requestPermissions}
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: meta.accent,
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  🔄 Retry Access
+                </button>
+              )}
+            </div>
 
             <div className="permission-row">
               <div className="permission-row__left">
@@ -375,7 +480,9 @@ function SessionSummaryPage() {
                   <p className="permission-row__sub">Required for interview monitoring</p>
                 </div>
               </div>
-              <span className="permission-badge">COMING SOON</span>
+              {cameraStatus === 'checking' && <span className="permission-badge">Checking...</span>}
+              {cameraStatus === 'granted' && <span className="permission-badge permission-badge--success">✅ Camera Connected</span>}
+              {cameraStatus === 'denied' && <span className="permission-badge permission-badge--danger">❌ Permission Missing</span>}
             </div>
 
             <div className="permission-row">
@@ -386,7 +493,9 @@ function SessionSummaryPage() {
                   <p className="permission-row__sub">Required for voice answers</p>
                 </div>
               </div>
-              <span className="permission-badge">COMING SOON</span>
+              {micStatus === 'checking' && <span className="permission-badge">Checking...</span>}
+              {micStatus === 'granted' && <span className="permission-badge permission-badge--success">✅ Microphone Connected</span>}
+              {micStatus === 'denied' && <span className="permission-badge permission-badge--danger">❌ Permission Missing</span>}
             </div>
 
             <div className="permission-row">
@@ -397,26 +506,37 @@ function SessionSummaryPage() {
                   <p className="permission-row__sub">Network & browser compatibility</p>
                 </div>
               </div>
-              <span className="permission-badge">COMING SOON</span>
+              {envStatus === 'checking' && <span className="permission-badge">Checking...</span>}
+              {envStatus === 'ready' && <span className="permission-badge permission-badge--success">✅ Ready</span>}
+              {envStatus === 'unsupported' && <span className="permission-badge permission-badge--danger">❌ Check Connection</span>}
             </div>
           </div>
 
-          {/* Start Interview (disabled placeholder) */}
+          {/* Start Interview */}
+          {startError && <div className="error-msg" style={{ marginTop: '1rem', marginBottom: '1rem' }}>⚠️ {startError}</div>}
+
           <button
             type="button"
             className="start-btn"
-            disabled
-            style={{ background: `linear-gradient(135deg, ${meta.accent}, ${meta.accent}cc)` }}
-            title="AI interview coming soon"
+            disabled={starting || cameraStatus !== 'granted' || micStatus !== 'granted'}
+            onClick={handleStartInterview}
+            style={{
+              background: `linear-gradient(135deg, ${meta.accent}, ${meta.accent}cc)`,
+              cursor: (starting || cameraStatus !== 'granted' || micStatus !== 'granted') ? 'not-allowed' : 'pointer',
+              opacity: (starting || cameraStatus !== 'granted' || micStatus !== 'granted') ? 0.45 : 1
+            }}
           >
-            <span>🚀</span>
-            Start AI Interview
+            {starting ? (
+              <>
+                Starting Mock Interview...
+              </>
+            ) : (
+              <>
+                <span>🚀</span>
+                Start AI Interview
+              </>
+            )}
           </button>
-
-          <p className="coming-soon-note">
-            <span className="coming-soon-pill">COMING SOON</span>
-            Voice + camera AI interviews will be available in the next release.
-          </p>
         </div>
       </div>
     </>

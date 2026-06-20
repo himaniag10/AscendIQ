@@ -34,4 +34,12 @@ export const interviewService = {
     const response = await api.patch(`${BASE}/session/${id}/status`, { status });
     return response.data;
   },
+
+  /**
+   * Start a mock interview by sending session ID or parameters.
+   */
+  async startInterview(payload) {
+    const response = await api.post(`${BASE}/start`, payload);
+    return response.data;
+  },
 };

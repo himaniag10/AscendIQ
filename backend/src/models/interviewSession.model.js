@@ -50,6 +50,11 @@ const interviewSessionSchema = new mongoose.Schema(
       default: '',
     },
 
+    firstQuestion: {
+      type: String,
+      default: '',
+    },
+
     // Session lifecycle
     status: {
       type: String,

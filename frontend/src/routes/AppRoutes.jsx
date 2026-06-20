@@ -9,6 +9,7 @@ import ProfilePage from '../pages/Profile/ProfilePage.jsx';
 import LearningSetupPage from '../pages/Interview/LearningSetupPage.jsx';
 import PlacementSetupPage from '../pages/Interview/PlacementSetupPage.jsx';
 import SessionSummaryPage from '../pages/Interview/SessionSummaryPage.jsx';
+import InterviewRoomPage from '../pages/Interview/InterviewRoomPage.jsx';
 import { ProtectedRoute } from './ProtectedRoute.jsx';
 
 export function AppRoutes() {
@@ -56,6 +57,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <SessionSummaryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interview/:sessionId"
+        element={
+          <ProtectedRoute>
+            <InterviewRoomPage />
           </ProtectedRoute>
         }
       />
