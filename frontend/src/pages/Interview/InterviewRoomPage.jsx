@@ -1,6 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { interviewService } from '../../services/interview.service.js';
+
+class InterviewErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[ErrorBoundary] InterviewRoomPage crashed:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', background: '#080d1a', color: '#e2e8f0', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>⚠️ Unable to load interview session.</h2>
+          <p style={{ color: '#ef4444', maxWidth: '600px', wordWrap: 'break-word' }}>{this.state.error?.toString()}</p>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <button onClick={() => window.location.reload()} style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', background: '#4f46e5', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Retry</button>
+            <button onClick={() => window.location.href = '/dashboard'} style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', background: '#1e293b', border: '1px solid #334155', color: 'white', cursor: 'pointer', fontWeight: 500 }}>Back To Dashboard</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -40,7 +72,7 @@ const SpeechRecognition =
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-function InterviewRoomPage() {
+function InterviewRoomContent() {
   const { sessionId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,12 +95,14 @@ function InterviewRoomPage() {
   // Voice / mic state
   const [transcript, setTranscript] = useState('');      // live interim transcript
   const [finalTranscript, setFinalTranscript] = useState(''); // accumulated final
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);   // AI is speaking TTS
-  const [isThinking, setIsThinking] = useState(false);   // waiting for Gemini
+  const [interviewState, setInterviewState] = useState('GENERATING_NEXT_QUESTION');
+  const isListening = interviewState === 'WAITING_FOR_CANDIDATE';
+  const isSpeaking = interviewState === 'AI_SPEAKING';
+  const isThinking = interviewState === 'PROCESSING_ANSWER';
+  const isThinkingRef = useRef(false);
 
   // Timer
-  const [time, setTime] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(null);
 
   // Camera
   const videoRef = useRef(null);
@@ -84,64 +118,120 @@ function InterviewRoomPage() {
 
   // ── Fetch session if not in router state ─────────────────────────────────
   useEffect(() => {
+    console.log('[InterviewPage] Component mounted. Session ID received:', sessionId);
     if (!session) {
+      console.log('[InterviewPage] API request started: Fetching session data...');
       interviewService.getSession(sessionId)
         .then(data => {
+          console.log('[InterviewPage] API response received. Setting session state...');
           setSession(data.session);
           const firstQ = data.session.firstQuestion;
-          if (firstQ && conversation.length === 0) {
-            setConversation([{ role: 'ai', content: firstQ }]);
+          if (firstQ) {
+            setConversation(prev => {
+              if (prev.length === 0) return [{ role: 'ai', content: firstQ }];
+              return prev;
+            });
             setCurrentAiMessage(firstQ);
           }
+          if (timeLeft === null) setTimeLeft((data.session.duration || 15) * 60);
         })
-        .catch(err => setError(err?.response?.data?.message || 'Session not found.'))
+        .catch(err => {
+          console.error('[InterviewPage] API fetch failed:', err);
+          setError(err?.response?.data?.message || 'Session not found.');
+        })
         .finally(() => setLoading(false));
+    } else if (timeLeft === null) {
+      console.log('[InterviewPage] Session state already set from router state.');
+      setTimeLeft((session.duration || 15) * 60);
     }
-  }, [sessionId]);
+  }, [sessionId, session, conversation.length, timeLeft]);
 
   // ── Camera setup ─────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
+    console.log('[InterviewPage] Camera initialization started...');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
+        console.log('[InterviewPage] Camera initialized successfully.');
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
       })
-      .catch(() => {}); // permissions already granted on summary page
+      .catch((err) => {
+        console.error('[InterviewPage] Camera initialization failed:', err);
+      }); 
     return () => {
       mounted = false;
       streamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []);
 
-  // ── Timer ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const id = setInterval(() => setTime(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // ── Speech Recognition & Submit Logic ────────────────────────────────────
 
-  // ── Auto-scroll conversation ──────────────────────────────────────────────
-  useEffect(() => {
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation, transcript]);
+  // Use a ref object to hold all functions. This completely breaks any cyclic
+  // dependencies and avoids Temporal Dead Zone (TDZ) issues in React Fast Refresh.
+  const fns = useRef({});
 
-  // ── Speak the first AI question on mount ─────────────────────────────────
-  useEffect(() => {
-    if (currentAiMessage && !isSpeaking) {
-      setIsSpeaking(true);
-      speak(currentAiMessage).then(() => {
-        setIsSpeaking(false);
-        startListening();
+  fns.current.stopListening = () => {
+    console.log('[Speech] Stopping recognition manually.');
+    clearTimeout(silenceTimerRef.current);
+    recognitionRef.current?.stop();
+    // Do not set state here, let the caller transition state (e.g. to PROCESSING_ANSWER)
+  };
+
+  fns.current.submitAnswer = async (answerText) => {
+    if (!answerText || isThinkingRef.current) return;
+    
+    console.log(`[Submit] Answer submitted: "${answerText}"`);
+
+    fns.current.stopListening();
+    clearTimeout(silenceTimerRef.current);
+    setInterviewState('PROCESSING_ANSWER');
+    isThinkingRef.current = true;
+
+    const candidateMsg = { role: 'candidate', content: answerText };
+    setConversation(prev => [...prev, candidateMsg]);
+    setFinalTranscript('');
+    setTranscript('');
+
+    try {
+      setConversation(currentConv => {
+        const updatedConversation = [...currentConv];
+        const apiConversation = [...updatedConversation];
+        interviewService.sendMessage(sessionId, answerText, apiConversation)
+          .then(data => {
+            if (data.success) {
+              const aiMsg = { role: 'ai', content: data.aiResponse };
+              setConversation(prev => [...prev, aiMsg]);
+              setCurrentAiMessage(data.aiResponse);
+      
+              console.log('[Submit] AI Response received. Speaking...');
+              setInterviewState('AI_SPEAKING');
+              isThinkingRef.current = false;
+              speak(data.aiResponse).then(() => {
+                fns.current.startListening();
+              });
+            } else {
+              isThinkingRef.current = false;
+              console.error('[Submit] API returned error:', data.message);
+              fns.current.abortInterviewGracefully("We have reached the end of this interview session due to an unexpected error. Generating performance analysis...");
+            }
+          })
+          .catch(err => {
+            isThinkingRef.current = false;
+            console.error('[Submit] Connection error:', err);
+            fns.current.abortInterviewGracefully("We have reached the end of this interview session. Thank you for your time.");
+          });
+
+        return currentConv; 
       });
+    } catch (err) {
+      setInterviewState('INTERVIEW_COMPLETE');
+      setError('Unexpected error submitting answer.');
     }
-    // Cleanup TTS on unmount
-    return () => window.speechSynthesis?.cancel();
-  }, []); // run once on mount
+  };
 
-  // ── Speech Recognition ───────────────────────────────────────────────────
-
-  const startListening = useCallback(() => {
+  fns.current.startListening = () => {
     setSpeechError('');
     if (!SpeechRecognition) {
       const msg = 'Speech Recognition is not supported in this browser.';
@@ -149,7 +239,7 @@ function InterviewRoomPage() {
       setSpeechError(msg);
       return;
     }
-    if (isListening) return;
+    if (isListening || interviewState === 'INTERVIEW_COMPLETE') return;
 
     console.log('[Speech] Initializing recognition...');
     const recognition = new SpeechRecognition();
@@ -161,7 +251,7 @@ function InterviewRoomPage() {
     let accumulated = '';
 
     recognition.onstart = () => {
-      console.log('[Speech] Recognition started successfully. Listening for audio...');
+      console.log('[InterviewPage] Speech recognition initialized successfully. Listening...');
     };
 
     recognition.onaudiostart = () => console.log('[Speech] Audio capturing started.');
@@ -183,13 +273,12 @@ function InterviewRoomPage() {
       setFinalTranscript(accumulated);
       setTranscript(interim);
 
-      // Reset silence timer on any speech
       clearTimeout(silenceTimerRef.current);
       if (accumulated.trim() || interim.trim()) {
         silenceTimerRef.current = setTimeout(() => {
           if (accumulated.trim()) {
             console.log('[Speech] Silence detected for 2.5s. Auto-submitting...');
-            submitAnswer(accumulated.trim());
+            fns.current.submitAnswer(accumulated.trim());
           }
         }, SILENCE_DELAY_MS);
       }
@@ -204,123 +293,107 @@ function InterviewRoomPage() {
 
     recognition.onend = () => {
       console.log('[Speech] Recognition ended.');
-      setIsListening(false);
+      // Do not transition state to false if it's meant to be something else.
     };
 
     try {
       recognition.start();
-      setIsListening(true);
+      setInterviewState('WAITING_FOR_CANDIDATE');
       setFinalTranscript('');
       setTranscript('');
     } catch (err) {
       console.error('[Speech] Failed to start recognition:', err);
       setSpeechError(`Failed to start recognition: ${err.message}`);
     }
-  }, [isListening]);
-
-  const stopListening = useCallback(() => {
-    console.log('[Speech] Stopping recognition manually.');
-    clearTimeout(silenceTimerRef.current);
-    recognitionRef.current?.stop();
-    setIsListening(false);
-  }, []);
-
-  // ── Submit answer to backend → Gemini → next question ────────────────────
-
-  // Use functional state updates to avoid closure traps for conversation
-  const submitAnswer = useCallback(async (answerText) => {
-    if (!answerText || isThinking) return;
-    
-    console.log(`[Submit] Answer submitted: "${answerText}"`);
-
-    stopListening();
-    clearTimeout(silenceTimerRef.current);
-    setIsThinking(true);
-
-    // Append candidate answer to conversation using functional update
-    const candidateMsg = { role: 'candidate', content: answerText };
-    setConversation(prev => [...prev, candidateMsg]);
-    setFinalTranscript('');
-    setTranscript('');
-
-    try {
-      // Need the latest conversation for the API call. Since state is async,
-      // we'll fetch the latest from the setState callback implicitly or just use the current ref.
-      // Wait, we need the CURRENT conversation array to send to backend.
-      setConversation(currentConv => {
-        const updatedConversation = [...currentConv];
-        // Only push if it's not already the last message (prevent double push in strict mode or race conditions)
-        if (updatedConversation.length === 0 || updatedConversation[updatedConversation.length - 1].content !== answerText) {
-             // We already added it in the outer setConversation, but let's just do it cleanly here.
-        }
-        
-        // Fire async call
-        const apiConversation = [...updatedConversation];
-        interviewService.sendMessage(sessionId, answerText, apiConversation)
-          .then(data => {
-            if (data.success) {
-              const aiMsg = { role: 'ai', content: data.aiResponse };
-              setConversation(prev => [...prev, aiMsg]);
-              setCurrentAiMessage(data.aiResponse);
-      
-              console.log('[Submit] AI Response received. Speaking...');
-              setIsSpeaking(true);
-              setIsThinking(false);
-              speak(data.aiResponse).then(() => {
-                setIsSpeaking(false);
-                startListening();
-              });
-            } else {
-              setIsThinking(false);
-              setError(data.message || 'Failed to get AI response.');
-            }
-          })
-          .catch(err => {
-            setIsThinking(false);
-            setError(err?.response?.data?.message || 'Connection error. Please check your network.');
-          });
-
-        return currentConv; 
-      });
-    } catch (err) {
-      setIsThinking(false);
-      setError('Unexpected error submitting answer.');
-    }
-  }, [isThinking, sessionId, stopListening, startListening]);
-
-  // ── Manual submit (fallback button) ─────────────────────────────────────
-  const handleManualSubmit = () => {
-    const answer = (finalTranscript + ' ' + transcript).trim();
-    if (answer) {
-      submitAnswer(answer);
-    }
   };
 
-  // ── End interview ────────────────────────────────────────────────────────
-  const handleEndInterview = async () => {
-    stopListening();
+  fns.current.abortInterviewGracefully = (closingMessage) => {
+    setInterviewState('INTERVIEW_COMPLETE');
+    fns.current.stopListening();
+    const finalMsg = closingMessage || "Thank you for participating in this interview. Your session has now concluded.";
+    setConversation(prev => [...prev, { role: 'ai', content: finalMsg }]);
+    setCurrentAiMessage(finalMsg);
+    
+    speak(finalMsg).then(() => {
+      fns.current.finalizeAndNavigate();
+    });
+  };
+
+  fns.current.handleEndInterview = () => {
+    fns.current.abortInterviewGracefully();
+  };
+
+  fns.current.finalizeAndNavigate = async () => {
     window.speechSynthesis?.cancel();
     streamRef.current?.getTracks().forEach(t => t.stop());
     try {
       await interviewService.updateSessionStatus(sessionId, 'completed');
     } catch (_) {}
-    navigate('/dashboard');
+    navigate(`/interview/summary/${sessionId}`);
   };
+
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const id = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) {
+          clearInterval(id);
+          fns.current.handleEndInterview();
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [timeLeft]);
+
+  // ── Auto-scroll conversation ──────────────────────────────────────────────
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversation, transcript]);
+
+  // ── Speak the first AI question on mount ─────────────────────────────────
+  useEffect(() => {
+    if (currentAiMessage && interviewState === 'GENERATING_NEXT_QUESTION') {
+      setInterviewState('AI_SPEAKING');
+      speak(currentAiMessage).then(() => {
+        fns.current.startListening();
+      });
+    }
+    // Cleanup synthesis ONLY on full unmount, not every render
+    return () => {
+      // Do nothing here, we handle cancel in finalizeAndNavigate
+    };
+  }, [currentAiMessage, interviewState]);
+
+
+
+  // ── Manual submit (fallback button) ─────────────────────────────────────
+  const handleManualSubmit = () => {
+    const answer = (finalTranscript + ' ' + transcript).trim();
+    if (answer) {
+      fns.current.submitAnswer(answer);
+    }
+  };
+
+  // ── End interview ────────────────────────────────────────────────────────
+  // Handled by useCallback above.
 
   // ── Loading / Error states ───────────────────────────────────────────────
   if (loading) {
     return (
       <div className="room-loading">
         <div className="room-spinner" />
-        <p>Preparing your interview room…</p>
+        <p>Loading Interview Session...</p>
         <style>{`
           .room-loading {
             display: flex; flex-direction: column; align-items: center;
             justify-content: center; min-height: 100vh;
             background: #0a0f1e; color: #94a3b8; gap: 1rem;
+            font-family: 'Inter', system-ui, sans-serif;
           }
           .room-spinner {
-            width: 36px; height: 36px;
+            width: 40px; height: 40px;
             border: 3px solid rgba(99,102,241,0.2);
             border-top-color: #6366f1; border-radius: 50%;
             animation: spin 700ms linear infinite;
@@ -704,7 +777,7 @@ function InterviewRoomPage() {
           </div>
           <div className="ir-timer">
             <span className="ir-timer-dot" />
-            <span className="ir-timer-val">{formatTime(time)}</span>
+            <span className="ir-timer-val">{timeLeft !== null ? formatTime(timeLeft) : '00:00'}</span>
           </div>
         </header>
 
@@ -837,7 +910,7 @@ function InterviewRoomPage() {
             </button>
           </div>
 
-          <button className="ir-end-btn" onClick={handleEndInterview}>
+          <button className="ir-end-btn" onClick={() => fns.current.handleEndInterview()}>
             End Interview
           </button>
         </footer>
@@ -847,4 +920,10 @@ function InterviewRoomPage() {
   );
 }
 
-export default InterviewRoomPage;
+export default function InterviewRoomPage() {
+  return (
+    <InterviewErrorBoundary>
+      <InterviewRoomContent />
+    </InterviewErrorBoundary>
+  );
+}

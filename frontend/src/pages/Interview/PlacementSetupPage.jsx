@@ -18,6 +18,8 @@ const INTERVIEW_ROUNDS = [
   'Online Assessment', 'Technical Round', 'HR Round', 'System Design', 'Mixed',
 ];
 
+const DURATIONS = [15, 20, 30, 45, 60];
+
 function ChipGroup({ options, selected, onSelect, accentColor = '#7c3aed' }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -44,6 +46,7 @@ function PlacementSetupPage() {
   const [customRole, setCustomRole] = useState('');
   const [experienceLevel, setExperienceLevel] = useState('');
   const [round, setRound] = useState('');
+  const [duration, setDuration] = useState(30);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -70,6 +73,7 @@ function PlacementSetupPage() {
         role: effectiveRole,
         experienceLevel,
         round,
+        duration,
       });
       navigate(`/interview/summary/${data.session._id}`);
     } catch (err) {
@@ -353,6 +357,23 @@ function PlacementSetupPage() {
             <div className="setup-card-p">
               <p className="setup-card-p__label">Interview Round</p>
               <ChipGroup options={INTERVIEW_ROUNDS} selected={round} onSelect={setRound} />
+            </div>
+
+            {/* Duration */}
+            <div className="setup-card-p">
+              <p className="setup-card-p__label">Interview Duration</p>
+              <div className="segmented-p">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`segmented-p__btn ${duration === d ? 'segmented-p__btn--active' : ''}`}
+                    onClick={() => setDuration(d)}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
             </div>
 
             {error && <div className="error-msg-p">{error}</div>}

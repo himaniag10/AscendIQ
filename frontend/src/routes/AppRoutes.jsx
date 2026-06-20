@@ -11,13 +11,14 @@ import PlacementSetupPage from '../pages/Interview/PlacementSetupPage.jsx';
 import SessionSummaryPage from '../pages/Interview/SessionSummaryPage.jsx';
 import InterviewRoomPage from '../pages/Interview/InterviewRoomPage.jsx';
 import { ProtectedRoute } from './ProtectedRoute.jsx';
+import { PublicRoute } from './PublicRoute.jsx';
 
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/" element={<PublicRoute><HomePage /></PublicRoute>} />
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/verify-otp" element={<VerifyOtpPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route

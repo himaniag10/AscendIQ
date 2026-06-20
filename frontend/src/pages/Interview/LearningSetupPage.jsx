@@ -9,6 +9,7 @@ const PRESET_TOPICS = [
 ];
 
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'];
+const DURATIONS = [5, 10, 15, 20, 'Custom'];
 
 function ChipGroup({ options, selected, onSelect }) {
   return (
@@ -32,6 +33,8 @@ function LearningSetupPage() {
   const [topic, setTopic] = useState('');
   const [customTopic, setCustomTopic] = useState('');
   const [difficulty, setDifficulty] = useState('');
+  const [duration, setDuration] = useState(15);
+  const [customDuration, setCustomDuration] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -60,12 +63,23 @@ function LearningSetupPage() {
       return;
     }
 
+    let effectiveDuration = duration;
+    if (duration === 'Custom') {
+      const parsed = parseInt(customDuration, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 120) {
+        setError('Please enter a valid custom duration between 1 and 120 minutes.');
+        return;
+      }
+      effectiveDuration = parsed;
+    }
+
     setSubmitting(true);
     try {
       const data = await interviewService.createSession({
         mode: 'learning',
         topic: effectiveTopic,
         difficulty,
+        duration: effectiveDuration,
       });
       navigate(`/interview/summary/${data.session._id}`);
     } catch (err) {
@@ -351,6 +365,34 @@ function LearningSetupPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Duration */}
+            <div className="setup-card">
+              <p className="setup-card__label">Interview Duration</p>
+              <div className="segmented">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`segmented__btn ${duration === d ? 'segmented__btn--active' : ''}`}
+                    onClick={() => setDuration(d)}
+                  >
+                    {d} {d !== 'Custom' && 'min'}
+                  </button>
+                ))}
+              </div>
+              {duration === 'Custom' && (
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  className="custom-input"
+                  placeholder="Enter duration in minutes (e.g. 25)"
+                  value={customDuration}
+                  onChange={(e) => setCustomDuration(e.target.value)}
+                />
+              )}
             </div>
 
             {error && <div className="error-msg">{error}</div>}

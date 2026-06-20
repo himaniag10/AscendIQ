@@ -20,22 +20,38 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedToken = window.localStorage.getItem(STORAGE_TOKEN);
-    if (savedToken) {
-      setToken(savedToken);
-      authService.setToken(savedToken);
-      authService.getCurrentUser().then((data) => {
-        setUser(data.user || null);
+    const initAuth = async () => {
+      const savedToken = window.localStorage.getItem(STORAGE_TOKEN);
+      if (!savedToken) {
         setLoading(false);
-      }).catch(() => {
+        return;
+      }
+
+      try {
+        setToken(savedToken);
+        authService.setToken(savedToken);
+        
+        // Check backend availability & token validity
+        const data = await authService.getCurrentUser();
+        
+        if (!data || !data.success || !data.user) {
+          throw new Error('Invalid token or backend response');
+        }
+        
+        setUser(data.user);
+      } catch (err) {
+        console.error('[AuthContext] Verification failed:', err.message);
+        // Clear everything on failure (backend down, invalid token, network error)
         setUser(null);
         setToken(null);
         window.localStorage.removeItem(STORAGE_TOKEN);
+        authService.clearToken();
+      } finally {
         setLoading(false);
-      });
-    } else {
-      setLoading(false);
-    }
+      }
+    };
+
+    initAuth();
   }, []);
 
   const login = async (credentials) => {

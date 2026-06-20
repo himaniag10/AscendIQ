@@ -41,6 +41,9 @@ function SessionSummaryPage() {
   const [envStatus, setEnvStatus] = useState('checking');
   const [startError, setStartError] = useState('');
   const [starting, setStarting] = useState(false);
+  
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
 
   const requestPermissions = async () => {
     setCameraStatus('checking');
@@ -114,10 +117,30 @@ function SessionSummaryPage() {
 
   useEffect(() => {
     interviewService.getSession(sessionId)
-      .then((data) => setSession(data.session))
+      .then((data) => {
+        setSession(data.session);
+        if (data.session.status === 'completed' && (!data.session.readiness || data.session.readiness.overallScore === 0)) {
+          triggerAnalysis(data.session._id);
+        }
+      })
       .catch((err) => setError(err?.response?.data?.message || err.message || 'Session not found.'))
       .finally(() => setLoading(false));
   }, [sessionId]);
+
+  const triggerAnalysis = async (id) => {
+    setAnalyzing(true);
+    setAnalysisError('');
+    try {
+      const data = await interviewService.analyzeInterview(id);
+      if (data.success) {
+        setSession(data.session);
+      }
+    } catch (err) {
+      setAnalysisError('Failed to analyze interview. Please try again later.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const meta = session ? (MODE_META[session.mode] || MODE_META.learning) : null;
 
@@ -396,15 +419,85 @@ function SessionSummaryPage() {
           font-size: 0.875rem;
           font-weight: 500;
         }
+
+        .results-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 1.5rem;
+          margin-bottom: 2rem;
+        }
+
+        .score-card {
+          background: var(--theme-surface);
+          border: 1px solid var(--theme-border);
+          border-radius: 1.25rem;
+          padding: 1.5rem;
+          text-align: center;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        }
+
+        .score-card__circle {
+          width: 100px;
+          height: 100px;
+          border-radius: 50%;
+          border: 6px solid var(--theme-primary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1rem;
+          font-size: 1.75rem;
+          font-weight: 800;
+          color: var(--theme-text);
+          background: var(--theme-surface-alt);
+        }
+
+        .score-card__label {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--theme-muted-text);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .feedback-section {
+          background: var(--theme-surface);
+          border: 1px solid var(--theme-border);
+          border-radius: 1.25rem;
+          padding: 1.5rem;
+          margin-bottom: 1.25rem;
+        }
+        
+        .feedback-section h3 {
+          font-size: 1.125rem;
+          margin-bottom: 1rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .feedback-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+
+        .feedback-list li {
+          padding: 0.75rem 1rem;
+          border-radius: 0.5rem;
+          background: var(--theme-surface-alt);
+          margin-bottom: 0.5rem;
+          font-size: 0.9rem;
+          color: var(--theme-secondary-text);
+        }
       `}</style>
 
       <div className="summary-page">
         <div className="summary-container">
-          <button className="summary-back-btn" onClick={() => navigate(`/interview/${session.mode}`)}>
+          <button className="summary-back-btn" onClick={() => navigate('/dashboard')}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M13 8H3M7 4L3 8l4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            Edit Configuration
+            Back to Dashboard
           </button>
 
           <div
@@ -413,10 +506,74 @@ function SessionSummaryPage() {
           >
             {meta.badge}
           </div>
-          <h1 className="summary-title">Interview Summary</h1>
-          <p className="summary-subtitle">Review your configuration before starting the interview.</p>
+          
+          <h1 className="summary-title">
+            {session.status === 'completed' ? 'Interview Results' : 'Interview Summary'}
+          </h1>
+          <p className="summary-subtitle">
+            {session.status === 'completed' 
+              ? 'Review your performance and detailed AI feedback.'
+              : 'Review your configuration before starting the interview.'}
+          </p>
 
-          {/* Session details card */}
+          {analyzing && (
+            <div className="summary-loading" style={{ minHeight: '30vh' }}>
+              <div className="summary-spinner" />
+              <p>Analyzing transcript and generating feedback... This may take a few seconds.</p>
+            </div>
+          )}
+
+          {analysisError && (
+            <div className="error-msg" style={{ marginBottom: '1.5rem' }}>⚠️ {analysisError}</div>
+          )}
+
+          {session.status === 'completed' && !analyzing && session.readiness && session.readiness.overallScore > 0 && (
+            <>
+              <div className="results-grid">
+                <div className="score-card">
+                  <div className="score-card__circle" style={{ borderColor: meta.accent }}>
+                    {session.readiness.overallScore}%
+                  </div>
+                  <p className="score-card__label">Overall Readiness</p>
+                </div>
+              </div>
+
+              <div className="summary-card">
+                <p className="summary-card__heading">Detailed Scores</p>
+                <InfoRow label="Technical Accuracy" value={`${session.readiness.technicalAccuracy}%`} />
+                <InfoRow label="Communication" value={`${session.readiness.communication}%`} />
+                <InfoRow label="Confidence" value={`${session.readiness.confidence}%`} />
+                <InfoRow label="Completeness" value={`${session.readiness.completeness}%`} />
+              </div>
+
+              {session.feedback && (
+                <>
+                  <div className="feedback-section" style={{ borderLeft: '4px solid #22c55e' }}>
+                    <h3 style={{ color: '#22c55e' }}><span>💡</span> Key Strengths</h3>
+                    <ul className="feedback-list">
+                      {session.feedback.strengths.map((str, idx) => <li key={idx}>{str}</li>)}
+                    </ul>
+                  </div>
+
+                  <div className="feedback-section" style={{ borderLeft: '4px solid #ef4444' }}>
+                    <h3 style={{ color: '#ef4444' }}><span>⚠️</span> Weaknesses</h3>
+                    <ul className="feedback-list">
+                      {session.feedback.weaknesses.map((w, idx) => <li key={idx}>{w}</li>)}
+                    </ul>
+                  </div>
+
+                  <div className="feedback-section" style={{ borderLeft: '4px solid #3b82f6' }}>
+                    <h3 style={{ color: '#3b82f6' }}><span>📈</span> Areas for Improvement</h3>
+                    <ul className="feedback-list">
+                      {session.feedback.improvementAreas.map((imp, idx) => <li key={idx}>{imp}</li>)}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Session details card (Always visible) */}
           <div className="summary-card">
             <p className="summary-card__heading">Session Configuration</p>
 
@@ -440,6 +597,7 @@ function SessionSummaryPage() {
               </>
             )}
 
+            <InfoRow label="Duration" value={`${session.duration || 15} mins`} />
             <InfoRow label="Status" value={session.status.charAt(0).toUpperCase() + session.status.slice(1)} />
             <InfoRow
               label="Created"
@@ -449,6 +607,9 @@ function SessionSummaryPage() {
               })}
             />
           </div>
+
+          {session.status !== 'completed' && (
+            <>
 
           {/* Camera & Mic Preparation */}
           <div className="camera-card">
@@ -537,6 +698,8 @@ function SessionSummaryPage() {
               </>
             )}
           </button>
+            </>
+          )}
         </div>
       </div>
     </>

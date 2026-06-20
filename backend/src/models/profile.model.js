@@ -82,6 +82,21 @@ const profileSchema = new mongoose.Schema(
       trim: true,
       maxlength: [600, 'Bio cannot exceed 600 characters'],
     },
+
+    // Interview Analytics & Dashboard
+    stats: {
+      interviewsCompleted: { type: Number, default: 0 },
+      currentStreak: { type: Number, default: 0 },
+      averageReadiness: { type: Number, default: 0 },
+    },
+    weaknesses: {
+      type: [String],
+      default: [],
+    },
+    learningPath: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

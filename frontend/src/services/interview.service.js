@@ -64,4 +64,12 @@ export const interviewService = {
     const response = await api.get(`${BASE}/${sessionId}/messages`);
     return response.data;
   },
+
+  /**
+   * Analyze completed interview (readiness and weaknesses).
+   */
+  async analyzeInterview(sessionId) {
+    const response = await api.post(`${BASE}/${sessionId}/analyze`);
+    return response.data;
+  },
 };

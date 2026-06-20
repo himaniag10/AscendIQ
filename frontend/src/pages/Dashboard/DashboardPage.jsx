@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext.jsx';
 import { Card } from '../../components/ui/Card.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
+import { profileService } from '../../services/profile.service.js';
+import { interviewService } from '../../services/interview.service.js';
+import { useEffect, useState } from 'react';
 
 const sidebarItems = [
   ['Dashboard', '/dashboard'],
@@ -40,6 +43,22 @@ function ModeCard({ mode, title, description, badge, icon, gradient, to }) {
 
 function DashboardPage() {
   const { user } = useContext(AuthContext);
+  const [profile, setProfile] = useState(null);
+  const [sessions, setSessions] = useState([]);
+
+  useEffect(() => {
+    profileService.getMyProfile().then(res => {
+      if (res.profile) setProfile(res.profile);
+    }).catch(() => {});
+
+    interviewService.getMySessions().then(res => {
+      if (res.success && res.sessions) setSessions(res.sessions);
+    }).catch(() => {});
+  }, []);
+
+  const stats = profile?.stats || { interviewsCompleted: 0, currentStreak: 0, averageReadiness: 0 };
+  const weaknesses = profile?.weaknesses || [];
+  const learningPath = profile?.learningPath || [];
 
   return (
     <>
@@ -243,10 +262,10 @@ function DashboardPage() {
 
           {/* Stats row */}
           <section className="grid gap-4 md:grid-cols-4">
-            <Card title="Interviews Completed" value="0" description="No interviews completed yet." icon="0" />
-            <Card title="Current Streak" value="0" description="Start your first interview to begin a streak." icon="0" />
-            <Card title="Readiness Score" value="0%" description="Complete interviews to calculate readiness." icon="0" />
-            <Card title="Goals Completed" value="0" description="No goals completed yet." icon="0" />
+            <Card title="Interviews Completed" value={stats.interviewsCompleted.toString()} description={stats.interviewsCompleted ? "Keep up the momentum." : "No interviews completed yet."} icon="📊" />
+            <Card title="Current Streak" value={stats.currentStreak.toString()} description={stats.currentStreak ? "Consecutive interview goals." : "Start your first interview to begin a streak."} icon="🔥" />
+            <Card title="Readiness Score" value={`${stats.averageReadiness}%`} description={stats.interviewsCompleted ? "Based on past AI evaluations." : "Complete interviews to calculate readiness."} icon="🎯" />
+            <Card title="Weak Areas" value={weaknesses.length.toString()} description={weaknesses.length ? "Identified across sessions." : "No weaknesses detected yet."} icon="🔍" />
           </section>
 
           {/* Analytics + Weakness */}
@@ -257,13 +276,22 @@ function DashboardPage() {
                   <p className="text-sm font-semibold uppercase text-[var(--theme-muted-text)]">Analytics</p>
                   <h2 className="mt-2 text-xl font-semibold text-[var(--theme-text)]">Readiness trend</h2>
                 </div>
-                <span className="rounded-lg bg-[var(--theme-surface-alt)] px-3 py-2 text-sm font-semibold text-[var(--theme-secondary-text)]">0%</span>
+                <span className="rounded-lg bg-[var(--theme-surface-alt)] px-3 py-2 text-sm font-semibold text-[var(--theme-secondary-text)]">
+                  {stats.averageReadiness}%
+                </span>
               </div>
               <div className="mt-6">
-                <EmptyState
-                  title="No analytics yet"
-                  description="Start your first interview to see readiness trends, scoring patterns, and improvement signals."
-                />
+                {stats.interviewsCompleted > 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--theme-surface-alt)', borderRadius: '1rem' }}>
+                    <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--theme-primary)' }}>{stats.averageReadiness}%</p>
+                    <p style={{ color: 'var(--theme-secondary-text)', fontSize: '0.9rem', marginTop: '0.5rem' }}>Average Readiness Score</p>
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No analytics yet"
+                    description="Start your first interview to see readiness trends, scoring patterns, and improvement signals."
+                  />
+                )}
               </div>
             </div>
 
@@ -271,10 +299,20 @@ function DashboardPage() {
               <p className="text-sm font-semibold uppercase text-[var(--theme-muted-text)]">Weakness Tracker</p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--theme-text)]">Focus areas</h2>
               <div className="mt-6">
-                <EmptyState
-                  title="No weak topics yet"
-                  description="Weak topics will appear only after AscendIQ evaluates real interview attempts."
-                />
+                {weaknesses.length > 0 ? (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {weaknesses.slice(0, 5).map((w, i) => (
+                      <li key={i} style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
+                        ⚠️ {w}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyState
+                    title="No weak topics yet"
+                    description="Weak topics will appear only after AscendIQ evaluates real interview attempts."
+                  />
+                )}
               </div>
             </div>
           </section>
@@ -284,20 +322,61 @@ function DashboardPage() {
             <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-[var(--theme-text)]">Interview History</h2>
               <div className="mt-5">
-                <EmptyState
-                  title="No interviews completed yet"
-                  description="Your completed interview sessions, scores, and review links will appear here."
-                />
+                {sessions.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {sessions.slice(0, 5).map(session => (
+                      <div 
+                        key={session._id} 
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', cursor: 'pointer', transition: 'transform 0.1s' }} 
+                        onClick={() => navigate(`/interview/summary/${session._id}`)}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 600, color: 'var(--theme-text)' }}>
+                            {session.mode === 'learning' ? session.topic : `${session.company} - ${session.role}`}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--theme-secondary-text)', marginTop: '0.25rem' }}>
+                            {new Date(session.createdAt).toLocaleDateString()} • {session.duration || 15} mins • {session.status}
+                          </p>
+                        </div>
+                        {session.status === 'completed' && (
+                          <div style={{ padding: '0.35rem 0.8rem', background: 'rgba(37,99,235,0.1)', color: '#2563eb', border: '1px solid rgba(37,99,235,0.2)', borderRadius: '99px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                            {session.readiness?.overallScore || 0}% Score
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No interviews completed yet"
+                    description="Your completed interview sessions, scores, and review links will appear here."
+                  />
+                )}
               </div>
             </div>
 
             <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-[var(--theme-text)]">Learning Path</h2>
               <div className="mt-5">
-                <EmptyState
-                  title="No learning path yet"
-                  description="Complete an interview so AscendIQ can generate a path from real performance data."
-                />
+                {learningPath.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {learningPath.map((step, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem' }}>
+                        <div style={{ background: 'var(--theme-primary)', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>
+                          {i + 1}
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--theme-text)' }}>{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No learning path yet"
+                    description="Complete an interview so AscendIQ can generate a path from real performance data."
+                  />
+                )}
               </div>
             </div>
           </section>

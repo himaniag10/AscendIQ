@@ -1,7 +1,8 @@
 import * as interviewService from '../services/interview.service.js';
-import { generateFirstQuestion, generateNextResponse } from '../services/gemini.service.js';
+import { generateFirstQuestion, generateNextResponse, generateInterviewAnalysis, generateLearningPath } from '../services/gemini.service.js';
 import InterviewSession from '../models/interviewSession.model.js';
 import InterviewMessage from '../models/interviewMessage.model.js';
+import Profile from '../models/profile.model.js';
 
 /**
  * POST /api/interview/session
@@ -189,7 +190,7 @@ export async function startInterview(req, res, next) {
       console.error('Gemini error during interview start:', geminiErr);
       return res.status(503).json({
         success: false,
-        message: 'Unable to start interview: Failed to generate question from AI service. Please check your Gemini API key or try again later.',
+        message: `Unable to start interview: ${geminiErr.message}`,
       });
     }
 
@@ -246,9 +247,9 @@ export async function sendMessage(req, res, next) {
     });
 
     // Generate AI follow-up via Gemini
-    let aiResponse;
+    let aiResponseObj;
     try {
-      aiResponse = await generateNextResponse(session, conversationHistory, candidateAnswer.trim());
+      aiResponseObj = await generateNextResponse(session, conversationHistory, candidateAnswer.trim());
     } catch (geminiErr) {
       console.error('Gemini error during sendMessage:', geminiErr);
       return res.status(503).json({
@@ -257,15 +258,22 @@ export async function sendMessage(req, res, next) {
       });
     }
 
+    const combinedText = `${aiResponseObj.feedback} ${aiResponseObj.nextQuestion}`;
+
     // Save AI response
     await InterviewMessage.create({
       sessionId,
       role: 'ai',
-      content: aiResponse,
+      content: combinedText,
       sequenceNumber: existingCount + 2,
     });
 
-    res.status(200).json({ success: true, aiResponse });
+    res.status(200).json({ 
+      success: true, 
+      aiResponse: combinedText,
+      feedback: aiResponseObj.feedback,
+      nextQuestion: aiResponseObj.nextQuestion
+    });
   } catch (err) {
     next(err);
   }
@@ -285,6 +293,89 @@ export async function getMessages(req, res, next) {
     const messages = await InterviewMessage.find({ sessionId }).sort({ sequenceNumber: 1 });
     res.status(200).json({ success: true, messages });
   } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/interview/:sessionId/analyze
+ * Analyzes completed interview, generates readiness score & weaknesses, and updates Profile learning path.
+ */
+export async function analyzeInterview(req, res, next) {
+  try {
+    const { sessionId } = req.params;
+    const session = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
+    
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Interview session not found.' });
+    }
+    
+    if (session.status !== 'completed') {
+      return res.status(400).json({ success: false, message: 'Session is not completed yet.' });
+    }
+
+    // Check if already analyzed to prevent duplicate aggregation
+    if (session.readiness && session.readiness.overallScore > 0) {
+      return res.status(200).json({ success: true, session });
+    }
+
+    // Fetch full conversation
+    const messages = await InterviewMessage.find({ sessionId }).sort({ sequenceNumber: 1 });
+    
+    // 1. Generate Interview Analysis
+    let analysis;
+    try {
+      analysis = await generateInterviewAnalysis(session, messages);
+    } catch (analysisErr) {
+      console.error('[Controller] generateInterviewAnalysis failed, using fallback:', analysisErr);
+      analysis = {
+        readiness: {
+          technicalAccuracy: 50,
+          communication: 50,
+          confidence: 50,
+          completeness: 50,
+          overallScore: 50
+        },
+        feedback: {
+          strengths: ["Completed the interview session."],
+          weaknesses: ["Detailed analysis unavailable due to service limits."],
+          improvementAreas: ["Review your answers manually from the transcript."]
+        }
+      };
+    }
+    
+    // 2. Save Analysis to Session
+    session.readiness = analysis.readiness;
+    session.feedback = analysis.feedback;
+    await session.save();
+
+    // 3. Aggregate Stats to Profile
+    const profile = await Profile.findOne({ user: req.user._id });
+    if (profile) {
+      profile.stats.interviewsCompleted += 1;
+      profile.stats.currentStreak += 1; // Simplistic streak increment for now
+      
+      // Moving average for readiness
+      const currentAvg = profile.stats.averageReadiness;
+      const newScore = analysis.readiness.overallScore;
+      const count = profile.stats.interviewsCompleted;
+      profile.stats.averageReadiness = Math.round(((currentAvg * (count - 1)) + newScore) / count);
+
+      // Append new weaknesses uniquely
+      const newWeaknesses = analysis.feedback.weaknesses || [];
+      const updatedWeaknesses = new Set([...profile.weaknesses, ...newWeaknesses]);
+      profile.weaknesses = Array.from(updatedWeaknesses);
+
+      // 4. Generate Learning Path based on aggregated weaknesses
+      const newPath = await generateLearningPath(profile.weaknesses);
+      profile.learningPath = newPath;
+
+      await profile.save();
+    }
+
+    res.status(200).json({ success: true, session });
+  } catch (err) {
+    console.error('Error in analyzeInterview:', err);
     next(err);
   }
 }

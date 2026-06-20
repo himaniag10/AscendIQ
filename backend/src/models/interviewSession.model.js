@@ -55,6 +55,26 @@ const interviewSessionSchema = new mongoose.Schema(
       default: '',
     },
 
+    duration: {
+      type: Number,
+      default: 15, // in minutes
+    },
+
+    // Post-interview analysis
+    readiness: {
+      technicalAccuracy: { type: Number, min: 0, max: 100, default: 0 },
+      communication: { type: Number, min: 0, max: 100, default: 0 },
+      confidence: { type: Number, min: 0, max: 100, default: 0 },
+      completeness: { type: Number, min: 0, max: 100, default: 0 },
+      overallScore: { type: Number, min: 0, max: 100, default: 0 },
+    },
+
+    feedback: {
+      strengths: { type: [String], default: [] },
+      weaknesses: { type: [String], default: [] },
+      improvementAreas: { type: [String], default: [] },
+    },
+
     // Session lifecycle
     status: {
       type: String,
