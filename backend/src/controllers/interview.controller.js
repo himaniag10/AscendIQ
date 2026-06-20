@@ -1,6 +1,7 @@
 import * as interviewService from '../services/interview.service.js';
-import { generateFirstQuestion } from '../services/gemini.service.js';
+import { generateFirstQuestion, generateNextResponse } from '../services/gemini.service.js';
 import InterviewSession from '../models/interviewSession.model.js';
+import InterviewMessage from '../models/interviewMessage.model.js';
 
 /**
  * POST /api/interview/session
@@ -197,11 +198,92 @@ export async function startInterview(req, res, next) {
     session.firstQuestion = firstQuestion;
     await session.save();
 
+    // Store first question as message #1
+    await InterviewMessage.create({
+      sessionId: session._id,
+      role: 'ai',
+      content: firstQuestion,
+      sequenceNumber: 1,
+    });
+
     res.status(200).json({
       success: true,
       sessionId: session._id,
       firstQuestion,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/interview/:sessionId/message
+ * Receives a candidate answer, generates the next AI response, stores both, returns AI reply.
+ */
+export async function sendMessage(req, res, next) {
+  try {
+    const { sessionId } = req.params;
+    const { candidateAnswer, conversationHistory = [] } = req.body;
+
+    if (!candidateAnswer || !candidateAnswer.trim()) {
+      return res.status(400).json({ success: false, message: 'candidateAnswer is required.' });
+    }
+
+    const session = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Interview session not found.' });
+    }
+
+    // Count existing messages to assign sequence numbers
+    const existingCount = await InterviewMessage.countDocuments({ sessionId });
+
+    // Save candidate answer
+    await InterviewMessage.create({
+      sessionId,
+      role: 'candidate',
+      content: candidateAnswer.trim(),
+      sequenceNumber: existingCount + 1,
+    });
+
+    // Generate AI follow-up via Gemini
+    let aiResponse;
+    try {
+      aiResponse = await generateNextResponse(session, conversationHistory, candidateAnswer.trim());
+    } catch (geminiErr) {
+      console.error('Gemini error during sendMessage:', geminiErr);
+      return res.status(503).json({
+        success: false,
+        message: 'AI service temporarily unavailable. Please try again.',
+      });
+    }
+
+    // Save AI response
+    await InterviewMessage.create({
+      sessionId,
+      role: 'ai',
+      content: aiResponse,
+      sequenceNumber: existingCount + 2,
+    });
+
+    res.status(200).json({ success: true, aiResponse });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/interview/:sessionId/messages
+ * Fetch all stored conversation messages for a session.
+ */
+export async function getMessages(req, res, next) {
+  try {
+    const { sessionId } = req.params;
+    const session = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Interview session not found.' });
+    }
+    const messages = await InterviewMessage.find({ sessionId }).sort({ sequenceNumber: 1 });
+    res.status(200).json({ success: true, messages });
   } catch (err) {
     next(err);
   }

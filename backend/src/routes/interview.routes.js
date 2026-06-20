@@ -5,6 +5,8 @@ import {
   getSession,
   updateSessionStatus,
   startInterview,
+  sendMessage,
+  getMessages,
 } from '../controllers/interview.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -18,5 +20,9 @@ router.post('/start', startInterview);
 router.get('/sessions', getMySessions);
 router.get('/session/:id', getSession);
 router.patch('/session/:id/status', updateSessionStatus);
+
+// Conversational interview engine
+router.post('/:sessionId/message', sendMessage);
+router.get('/:sessionId/messages', getMessages);
 
 export default router;

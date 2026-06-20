@@ -36,10 +36,32 @@ export const interviewService = {
   },
 
   /**
-   * Start a mock interview by sending session ID or parameters.
+   * Start a mock interview — generates first Gemini question.
    */
   async startInterview(payload) {
     const response = await api.post(`${BASE}/start`, payload);
+    return response.data;
+  },
+
+  /**
+   * Send a candidate answer and get the next AI interviewer response.
+   * @param {string} sessionId
+   * @param {string} candidateAnswer
+   * @param {Array}  conversationHistory - Array of {role, content} objects
+   */
+  async sendMessage(sessionId, candidateAnswer, conversationHistory = []) {
+    const response = await api.post(`${BASE}/${sessionId}/message`, {
+      candidateAnswer,
+      conversationHistory,
+    });
+    return response.data;
+  },
+
+  /**
+   * Fetch full conversation history for a session.
+   */
+  async getMessages(sessionId) {
+    const response = await api.get(`${BASE}/${sessionId}/messages`);
     return response.data;
   },
 };
