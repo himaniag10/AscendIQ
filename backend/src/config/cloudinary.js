@@ -18,4 +18,10 @@ if (cloudinaryUrl) {
   });
 }
 
+console.log("Cloudinary Config Check:");
+console.log("Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME);
+console.log("API Key:", process.env.CLOUDINARY_API_KEY);
+console.log("API Secret Exists:", !!process.env.CLOUDINARY_API_SECRET);
+console.log("Cloudinary URL:", process.env.CLOUDINARY_URL);
+
 export default cloudinary;

@@ -69,6 +69,25 @@ const profileSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    resumePublicId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    resumeFileName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    resumeUploadedAt: {
+      type: Date,
+      default: null,
+    },
+    profileImagePublicId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     bio: {
       type: String,
       default: '',

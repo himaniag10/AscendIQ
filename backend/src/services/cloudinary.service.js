@@ -1,3 +1,4 @@
+import path from 'path';
 import cloudinary from '../config/cloudinary.js';
 
 const uploadBuffer = ({ buffer, folder, resourceType, publicId }) => {
@@ -45,8 +46,14 @@ export const buildPublicIdFromUrl = (url, resourceType = 'image') => {
   }
 };
 
-export const deleteCloudinaryAsset = async (url, resourceType = 'image') => {
-  const publicId = buildPublicIdFromUrl(url, resourceType);
+const isPublicId = (value) => typeof value === 'string' && value !== '' && !value.startsWith('http');
+
+export const deleteCloudinaryAsset = async (urlOrPublicId, resourceType = 'image') => {
+  if (!urlOrPublicId) return null;
+  const publicId = isPublicId(urlOrPublicId)
+    ? urlOrPublicId
+    : buildPublicIdFromUrl(urlOrPublicId, resourceType);
+
   if (!publicId) return null;
   return cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
 };
@@ -59,16 +66,23 @@ export const uploadProfileImage = async (file, userId) => {
     publicId: `${userId}-avatar-${Date.now()}`,
   });
 
-  return result.secure_url;
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+  };
 };
 
 export const uploadResume = async (file, userId) => {
+  const ext = path.extname(file.originalname) || '.pdf';
   const result = await uploadBuffer({
     buffer: file.buffer,
     folder: 'ascendiq/resumes',
     resourceType: 'raw',
-    publicId: `${userId}-resume-${Date.now()}.pdf`,
+    publicId: `${userId}-resume-${Date.now()}${ext}`,
   });
 
-  return result.secure_url;
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+  };
 };

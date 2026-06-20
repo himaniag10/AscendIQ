@@ -10,20 +10,34 @@ const normalizeSkills = (skills) => {
   return [];
 };
 
-const buildProfilePayload = (data, user) => ({
-  fullName: data.fullName?.trim() || user.name,
-  email: user.email,
-  profileImageUrl: data.profileImageUrl?.trim() || user.avatar || '',
-  college: data.college?.trim() || '',
-  degree: data.degree?.trim() || '',
-  branch: data.branch?.trim() || '',
-  graduationYear: data.graduationYear ? Number(data.graduationYear) : null,
-  skills: normalizeSkills(data.skills),
-  targetRole: data.targetRole?.trim() || '',
-  targetCompany: data.targetCompany?.trim() || '',
-  resumeUrl: data.resumeUrl?.trim() || '',
-  bio: data.bio?.trim() || '',
-});
+const buildProfilePayload = (data, user) => {
+  const payload = {
+    fullName: data.fullName?.trim() || user.name,
+    email: user.email,
+    profileImageUrl: data.profileImageUrl?.trim() || user.avatar || '',
+    college: data.college?.trim() || '',
+    degree: data.degree?.trim() || '',
+    branch: data.branch?.trim() || '',
+    graduationYear: data.graduationYear ? Number(data.graduationYear) : null,
+    skills: normalizeSkills(data.skills),
+    targetRole: data.targetRole?.trim() || '',
+    targetCompany: data.targetCompany?.trim() || '',
+    resumeUrl: data.resumeUrl?.trim() || '',
+    bio: data.bio?.trim() || '',
+  };
+
+  if (data.resumeFileName !== undefined) {
+    payload.resumeFileName = data.resumeFileName?.trim() || '';
+  }
+  if (data.resumePublicId !== undefined) {
+    payload.resumePublicId = data.resumePublicId?.trim() || '';
+  }
+  if (data.resumeUploadedAt !== undefined) {
+    payload.resumeUploadedAt = data.resumeUploadedAt ? new Date(data.resumeUploadedAt) : null;
+  }
+
+  return payload;
+};
 
 export const getProfileByUserId = async (userId) => {
   return Profile.findOne({ user: userId });

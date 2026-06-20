@@ -13,20 +13,20 @@ export const profileService = {
     return response.data;
   },
 
-  async uploadAvatar(file) {
+  async uploadAvatar(file, onUploadProgress) {
     const fd = new FormData();
     fd.append('avatar', file);
     const response = await api.post(`${PROFILE_PATH}/upload-avatar`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress,
     });
     return response.data;
   },
 
-  async uploadResume(file) {
+  async uploadResume(file, onUploadProgress) {
     const fd = new FormData();
     fd.append('resume', file);
     const response = await api.post(`${PROFILE_PATH}/upload-resume`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress,
     });
     return response.data;
   },

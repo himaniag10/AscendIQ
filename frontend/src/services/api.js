@@ -2,13 +2,14 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 api.interceptors.request.use(
   (config) => {
+    // Don't set Content-Type for FormData - let axios/browser handle it
+    if (!(config.data instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
+    }
     const token = window.localStorage.getItem('ascendiq-token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;

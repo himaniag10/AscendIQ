@@ -12,6 +12,7 @@ const formatProfile = (profile, user) => ({
   fullName: profile?.fullName || user.name,
   email: user.email,
   profileImageUrl: profile?.profileImageUrl || user.avatar || '',
+  profileImagePublicId: profile?.profileImagePublicId || '',
   college: profile?.college || '',
   degree: profile?.degree || '',
   branch: profile?.branch || '',
@@ -20,6 +21,9 @@ const formatProfile = (profile, user) => ({
   targetRole: profile?.targetRole || '',
   targetCompany: profile?.targetCompany || '',
   resumeUrl: profile?.resumeUrl || '',
+  resumePublicId: profile?.resumePublicId || '',
+  resumeFileName: profile?.resumeFileName || '',
+  resumeUploadedAt: profile?.resumeUploadedAt || null,
   bio: profile?.bio || '',
   completion: calculateProfileCompletion(profile),
   isCompleted: calculateProfileCompletion(profile) >= 70,
@@ -66,24 +70,32 @@ export const uploadAvatar = async (req, res, next) => {
     const profile = await Profile.findOne({ user: req.user._id });
 
     // delete existing asset if present
-    if (profile?.profileImageUrl) {
+    if (profile?.profileImagePublicId) {
+      await deleteCloudinaryAsset(profile.profileImagePublicId, 'image');
+    } else if (profile?.profileImageUrl) {
       await deleteCloudinaryAsset(profile.profileImageUrl, 'image');
     } else if (req.user.avatar) {
       await deleteCloudinaryAsset(req.user.avatar, 'image');
     }
 
-    const uploadedUrl = await uploadProfileImage(req.file, req.user._id);
+    const uploadResult = await uploadProfileImage(req.file, req.user._id);
 
     const updatedProfile = await Profile.findOneAndUpdate(
       { user: req.user._id },
-      { $set: { profileImageUrl: uploadedUrl }, $setOnInsert: { user: req.user._id } },
+      {
+        $set: {
+          profileImageUrl: uploadResult.url,
+          profileImagePublicId: uploadResult.publicId,
+        },
+        $setOnInsert: { user: req.user._id },
+      },
       { new: true, upsert: true }
     );
 
     // also update user.avatar for consistency
-    await User.findByIdAndUpdate(req.user._id, { $set: { avatar: uploadedUrl } });
+    await User.findByIdAndUpdate(req.user._id, { $set: { avatar: uploadResult.url } });
 
-    res.status(200).json({ success: true, message: 'Avatar uploaded successfully.', url: uploadedUrl, profile: formatProfile(updatedProfile, { ...req.user, avatar: uploadedUrl }) });
+    res.status(200).json({ success: true, message: 'Avatar uploaded successfully.', url: uploadResult.url, profile: formatProfile(updatedProfile, { ...req.user, avatar: uploadResult.url }) });
   } catch (error) {
     next(error);
   }
@@ -102,19 +114,29 @@ export const uploadResume = async (req, res, next) => {
 
     const profile = await Profile.findOne({ user: req.user._id });
 
-    if (profile?.resumeUrl) {
+    if (profile?.resumePublicId) {
+      await deleteCloudinaryAsset(profile.resumePublicId, 'raw');
+    } else if (profile?.resumeUrl) {
       await deleteCloudinaryAsset(profile.resumeUrl, 'raw');
     }
 
-    const uploadedUrl = await uploadResumeToCloud(req.file, req.user._id);
+    const uploadResult = await uploadResumeToCloud(req.file, req.user._id);
 
     const updatedProfile = await Profile.findOneAndUpdate(
       { user: req.user._id },
-      { $set: { resumeUrl: uploadedUrl }, $setOnInsert: { user: req.user._id } },
+      {
+        $set: {
+          resumeUrl: uploadResult.url,
+          resumePublicId: uploadResult.publicId,
+          resumeFileName: req.file.originalname,
+          resumeUploadedAt: new Date(),
+        },
+        $setOnInsert: { user: req.user._id },
+      },
       { new: true, upsert: true }
     );
 
-    res.status(200).json({ success: true, message: 'Resume uploaded successfully.', url: uploadedUrl, profile: formatProfile(updatedProfile, req.user) });
+    res.status(200).json({ success: true, message: 'Resume uploaded successfully.', url: uploadResult.url, profile: formatProfile(updatedProfile, req.user) });
   } catch (error) {
     next(error);
   }
@@ -126,14 +148,23 @@ export const uploadResume = async (req, res, next) => {
 export const deleteAvatar = async (req, res, next) => {
   try {
     const profile = await Profile.findOne({ user: req.user._id });
+    const targetPublicId = profile?.profileImagePublicId;
     const targetUrl = profile?.profileImageUrl || req.user.avatar;
-    if (!targetUrl) {
+    if (!targetPublicId && !targetUrl) {
       return res.status(200).json({ success: true, message: 'No avatar to delete.' });
     }
 
-    await deleteCloudinaryAsset(targetUrl, 'image');
+    if (targetPublicId) {
+      await deleteCloudinaryAsset(targetPublicId, 'image');
+    } else {
+      await deleteCloudinaryAsset(targetUrl, 'image');
+    }
 
-    await Profile.findOneAndUpdate({ user: req.user._id }, { $set: { profileImageUrl: '' } }, { new: true });
+    await Profile.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: { profileImageUrl: '', profileImagePublicId: '' } },
+      { new: true }
+    );
     await User.findByIdAndUpdate(req.user._id, { $set: { avatar: '' } });
 
     res.status(200).json({ success: true, message: 'Avatar deleted.' });
@@ -148,14 +179,30 @@ export const deleteAvatar = async (req, res, next) => {
 export const deleteResume = async (req, res, next) => {
   try {
     const profile = await Profile.findOne({ user: req.user._id });
+    const targetPublicId = profile?.resumePublicId;
     const targetUrl = profile?.resumeUrl;
-    if (!targetUrl) {
+    if (!targetPublicId && !targetUrl) {
       return res.status(200).json({ success: true, message: 'No resume to delete.' });
     }
 
-    await deleteCloudinaryAsset(targetUrl, 'raw');
+    if (targetPublicId) {
+      await deleteCloudinaryAsset(targetPublicId, 'raw');
+    } else {
+      await deleteCloudinaryAsset(targetUrl, 'raw');
+    }
 
-    await Profile.findOneAndUpdate({ user: req.user._id }, { $set: { resumeUrl: '' } }, { new: true });
+    await Profile.findOneAndUpdate(
+      { user: req.user._id },
+      {
+        $set: {
+          resumeUrl: '',
+          resumePublicId: '',
+          resumeFileName: '',
+          resumeUploadedAt: null,
+        },
+      },
+      { new: true }
+    );
 
     res.status(200).json({ success: true, message: 'Resume deleted.' });
   } catch (error) {

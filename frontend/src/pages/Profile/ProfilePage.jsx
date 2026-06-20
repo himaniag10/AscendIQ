@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
 import { Input } from '../../components/ui/Input.jsx';
@@ -46,6 +46,16 @@ function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeProgress, setResumeProgress] = useState(0);
+  const [avatarProgress, setAvatarProgress] = useState(0);
+  const [avatarMessage, setAvatarMessage] = useState('');
+  const [resumeMessage, setResumeMessage] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+  const [resumeError, setResumeError] = useState('');
+  const avatarInputRef = useRef(null);
+  const resumeInputRef = useRef(null);
 
   useEffect(() => {
     profileService.getMyProfile()
@@ -66,6 +76,177 @@ function ProfilePage() {
   const handleChange = (event) => {
     setForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));
   };
+
+  const handleAvatarFiles = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+      setAvatarError('Please upload a JPG, JPEG, PNG, or WEBP image.');
+      return;
+    }
+
+    setAvatarLoading(true);
+    setAvatarError('');
+    setAvatarMessage('');
+
+    try {
+      const data = await profileService.uploadAvatar(file, (progressEvent) => {
+        if (progressEvent.lengthComputable) {
+          setAvatarProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+        }
+      });
+      setProfile(data.profile);
+      setForm(normalizeForm(data.profile));
+      setAvatarMessage('Profile image uploaded successfully.');
+      setMessage('Profile image updated.');
+    } catch (err) {
+      setAvatarError(err.message || 'Unable to upload avatar.');
+    } finally {
+      setAvatarLoading(false);
+      setAvatarProgress(0);
+    }
+  };
+
+  const handleResumeFiles = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      setResumeError('Please upload a PDF resume.');
+      return;
+    }
+
+    setResumeLoading(true);
+    setResumeError('');
+    setResumeMessage('');
+    setResumeProgress(0);
+
+    try {
+      const data = await profileService.uploadResume(file, (progressEvent) => {
+        if (progressEvent.lengthComputable) {
+          setResumeProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+        }
+      });
+      setProfile(data.profile);
+      setForm(normalizeForm(data.profile));
+      setResumeMessage('Resume uploaded successfully.');
+      setMessage('Resume updated successfully.');
+    } catch (err) {
+      setResumeError(err.message || 'Unable to upload resume.');
+    } finally {
+      setResumeLoading(false);
+      setResumeProgress(0);
+    }
+  };
+
+  const handleAvatarUploadClick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleResumeUploadClick = () => {
+    resumeInputRef.current?.click();
+  };
+
+  const handleAvatarDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer?.files?.length) {
+      handleAvatarFiles(event.dataTransfer.files);
+    }
+  };
+
+  const handleAvatarDragOver = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDeleteAvatar = async () => {
+    setAvatarLoading(true);
+    setAvatarError('');
+    try {
+      const data = await profileService.deleteAvatar();
+      setProfile((prev) => ({ ...prev, profileImageUrl: '', profileImagePublicId: '' }));
+      setForm((prev) => ({ ...prev, profileImageUrl: '' }));
+      setMessage(data.message || 'Avatar deleted successfully.');
+    } catch (err) {
+      setAvatarError(err.message || 'Unable to delete avatar.');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    setResumeLoading(true);
+    setResumeError('');
+    try {
+      const data = await profileService.deleteResume();
+      setProfile((prev) => ({ ...prev, resumeUrl: '', resumePublicId: '', resumeFileName: '', resumeUploadedAt: null }));
+      setForm((prev) => ({ ...prev, resumeUrl: '' }));
+      setMessage(data.message || 'Resume deleted successfully.');
+    } catch (err) {
+      setResumeError(err.message || 'Unable to delete resume.');
+    } finally {
+      setResumeLoading(false);
+    }
+  };
+
+  const formattedResumeName = profile.resumeFileName || profile.resumeUrl?.split('/').pop() || '';
+  const formattedResumeDate = profile.resumeUploadedAt ? new Date(profile.resumeUploadedAt).toLocaleDateString() : null;
+
+  const showAvatarPlaceholder = !profile.profileImageUrl;
+
+  const resumeSectionContent = profile.resumeUrl ? (
+    <>
+      <p className="text-sm font-semibold text-[var(--theme-text)]">{formattedResumeName || 'Uploaded resume'}</p>
+      {formattedResumeDate && <p className="text-sm text-[var(--theme-secondary-text)]">Uploaded on {formattedResumeDate}</p>}
+      <div className="mt-4 flex flex-wrap gap-3">
+        <a href={profile.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-lg bg-[var(--theme-surface-alt)] px-4 py-2 text-sm font-semibold text-[var(--theme-primary)] hover:bg-[var(--theme-surface)]">
+          View Resume
+        </a>
+        <Button type="button" variant="secondary" onClick={handleResumeUploadClick} disabled={resumeLoading}>
+          {resumeLoading ? 'Replacing...' : 'Replace Resume'}
+        </Button>
+        <Button type="button" variant="danger" onClick={handleDeleteResume} disabled={resumeLoading}>
+          Delete Resume
+        </Button>
+      </div>
+    </>
+  ) : (
+    <>
+      <p className="text-sm font-semibold text-[var(--theme-text)]">No resume uploaded yet.</p>
+      <p className="mt-2 text-sm text-[var(--theme-secondary-text)]">Upload your resume in PDF format to complete your profile.</p>
+      <Button type="button" className="mt-4" onClick={handleResumeUploadClick} disabled={resumeLoading}>
+        {resumeLoading ? 'Uploading...' : 'Upload Resume'}
+      </Button>
+    </>
+  );
+
+  const avatarSectionContent = (
+    <div
+      className="group relative flex h-48 w-48 cursor-pointer items-center justify-center overflow-hidden rounded-3xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-alt)] text-center transition hover:border-[var(--theme-primary)]"
+      onDrop={handleAvatarDrop}
+      onDragOver={handleAvatarDragOver}
+      onClick={handleAvatarUploadClick}
+    >
+      {profile.profileImageUrl ? (
+        <img src={profile.profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-3 px-4 text-sm text-[var(--theme-secondary-text)]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--theme-primary-soft)] text-2xl font-bold text-[var(--theme-primary)]">
+            {profile.fullName ? profile.fullName.slice(0, 2).toUpperCase() : 'A'}
+          </div>
+          <p className="max-w-[12rem]">Drag & drop an image here, or click to upload</p>
+          <p className="text-xs">JPEG, PNG, WEBP (max 2MB)</p>
+        </div>
+      )}
+      {avatarLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+          Uploading...
+        </div>
+      )}
+    </div>
+  );
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -143,7 +324,20 @@ function ProfilePage() {
             <div className="mt-5 space-y-5">
               <Input label="Full Name" name="fullName" value={form.fullName} onChange={handleChange} />
               <Input label="Email" name="email" value={form.email} onChange={handleChange} disabled />
-              <Input label="Profile Image URL" name="profileImageUrl" value={form.profileImageUrl} onChange={handleChange} placeholder="Cloudinary URL later" />
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-[var(--theme-secondary-text)]">Profile Photo</label>
+                <div className="flex flex-col items-start gap-3">
+                  {avatarSectionContent}
+                  {avatarError && <p className="text-sm text-[var(--theme-danger)]">{avatarError}</p>}
+                  {avatarMessage && <p className="text-sm text-[var(--theme-success)]">{avatarMessage}</p>}
+                  {profile.profileImageUrl && (
+                    <Button type="button" variant="danger" onClick={handleDeleteAvatar} disabled={avatarLoading}>
+                      {avatarLoading ? 'Deleting...' : 'Delete Avatar'}
+                    </Button>
+                  )}
+                </div>
+                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp" className="hidden" onChange={(event) => handleAvatarFiles(event.target.files)} />
+              </div>
             </div>
           </section>
 
@@ -169,7 +363,18 @@ function ProfilePage() {
           <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-[var(--theme-text)]">Professional Information</h2>
             <div className="mt-5 space-y-5">
-              <Input label="Resume URL" name="resumeUrl" value={form.resumeUrl} onChange={handleChange} placeholder="Cloudinary URL later" />
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-[var(--theme-secondary-text)]">Resume</label>
+                {resumeSectionContent}
+                {resumeError && <p className="text-sm text-[var(--theme-danger)]">{resumeError}</p>}
+                {resumeMessage && <p className="text-sm text-[var(--theme-success)]">{resumeMessage}</p>}
+                {resumeProgress > 0 && (
+                  <div className="rounded-full bg-[var(--theme-border)] p-1">
+                    <div className="h-2 rounded-full bg-[var(--theme-primary)]" style={{ width: `${resumeProgress}%` }} />
+                  </div>
+                )}
+                <input ref={resumeInputRef} type="file" accept="application/pdf" className="hidden" onChange={(event) => handleResumeFiles(event.target.files)} />
+              </div>
               <label className="block text-sm">
                 <span className="mb-2 block font-medium text-[var(--theme-secondary-text)]">Bio</span>
                 <textarea
@@ -219,7 +424,28 @@ function ProfilePage() {
           <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm lg:col-span-2">
             <h2 className="text-xl font-semibold text-[var(--theme-text)]">Professional Information</h2>
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <Field label="Resume URL" value={profile.resumeUrl} />
+              <div className="rounded-xl bg-[var(--theme-surface-alt)] p-4">
+                <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Resume</p>
+                {profile.resumeUrl ? (
+                  <div className="mt-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--theme-text)]">{formattedResumeName || 'Uploaded resume'}</p>
+                      {formattedResumeDate && <p className="text-xs text-[var(--theme-secondary-text)]">Uploaded on {formattedResumeDate}</p>}
+                    </div>
+                    <a
+                      href={profile.resumeUrl}
+                      download={formattedResumeName}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-lg bg-[var(--theme-surface)] border border-[var(--theme-border)] px-4 py-2 text-sm font-semibold text-[var(--theme-primary)] hover:bg-[var(--theme-surface-alt)] transition"
+                    >
+                      Download PDF
+                    </a>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-medium text-[var(--theme-text)]">No resume uploaded yet</p>
+                )}
+              </div>
               <Field label="Bio" value={profile.bio} />
             </div>
           </section>
