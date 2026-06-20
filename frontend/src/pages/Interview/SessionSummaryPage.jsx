@@ -1,0 +1,426 @@
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { interviewService } from '../../services/interview.service.js';
+
+const MODE_META = {
+  learning: {
+    label: 'Learning Mode',
+    badge: '🧠 Learning Mode',
+    accent: '#2563eb',
+    softBg: 'rgba(37,99,235,0.06)',
+    softBorder: 'rgba(37,99,235,0.18)',
+  },
+  placement: {
+    label: 'Placement Mode',
+    badge: '🏢 Placement Mode',
+    accent: '#7c3aed',
+    softBg: 'rgba(124,58,237,0.06)',
+    softBorder: 'rgba(124,58,237,0.18)',
+  },
+};
+
+function InfoRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="summary-row">
+      <span className="summary-row__label">{label}</span>
+      <span className="summary-row__value">{value}</span>
+    </div>
+  );
+}
+
+function SessionSummaryPage() {
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    interviewService.getSession(sessionId)
+      .then((data) => setSession(data.session))
+      .catch((err) => setError(err?.response?.data?.message || err.message || 'Session not found.'))
+      .finally(() => setLoading(false));
+  }, [sessionId]);
+
+  const meta = session ? (MODE_META[session.mode] || MODE_META.learning) : null;
+
+  if (loading) {
+    return (
+      <div className="summary-loading">
+        <div className="summary-spinner" />
+        <p>Loading session…</p>
+      </div>
+    );
+  }
+
+  if (error || !session) {
+    return (
+      <div className="summary-error-wrap">
+        <div className="summary-error">
+          <p>⚠️ {error || 'Session not found.'}</p>
+          <button onClick={() => navigate('/dashboard')}>Back to Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <style>{`
+        .summary-page {
+          min-height: calc(100vh - 4rem);
+          background: var(--theme-background);
+          padding: 3rem 1rem;
+        }
+
+        .summary-container {
+          max-width: 600px;
+          margin: 0 auto;
+        }
+
+        .summary-back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.375rem;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: var(--theme-muted-text);
+          cursor: pointer;
+          background: none;
+          border: none;
+          padding: 0;
+          margin-bottom: 1.75rem;
+          transition: color 160ms ease;
+        }
+
+        .summary-back-btn:hover { color: var(--theme-text); }
+
+        .summary-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.375rem;
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          padding: 0.3rem 0.875rem;
+          border-radius: 99px;
+          margin-bottom: 0.875rem;
+        }
+
+        .summary-title {
+          font-size: 1.875rem;
+          font-weight: 700;
+          color: var(--theme-text);
+          letter-spacing: -0.02em;
+          margin-bottom: 0.375rem;
+        }
+
+        .summary-subtitle {
+          font-size: 0.9rem;
+          color: var(--theme-secondary-text);
+          margin-bottom: 2rem;
+        }
+
+        .summary-card {
+          background: var(--theme-surface);
+          border: 1px solid var(--theme-border);
+          border-radius: 1.25rem;
+          padding: 1.75rem;
+          margin-bottom: 1.25rem;
+          box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+        }
+
+        .summary-card__heading {
+          font-size: 0.8125rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          color: var(--theme-muted-text);
+          margin-bottom: 1.125rem;
+        }
+
+        .summary-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 1rem;
+          padding: 0.625rem 0;
+          border-bottom: 1px solid var(--theme-border);
+        }
+
+        .summary-row:last-child { border-bottom: none; }
+
+        .summary-row__label {
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: var(--theme-secondary-text);
+          flex-shrink: 0;
+        }
+
+        .summary-row__value {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--theme-text);
+          text-align: right;
+        }
+
+        .camera-card {
+          background: var(--theme-surface);
+          border: 1px solid var(--theme-border);
+          border-radius: 1.25rem;
+          padding: 1.75rem;
+          margin-bottom: 1.25rem;
+        }
+
+        .camera-card__heading {
+          font-size: 0.8125rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          color: var(--theme-muted-text);
+          margin-bottom: 1rem;
+        }
+
+        .permission-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.875rem 1rem;
+          border-radius: 0.75rem;
+          background: var(--theme-surface-alt);
+          margin-bottom: 0.625rem;
+        }
+
+        .permission-row:last-child { margin-bottom: 0; }
+
+        .permission-row__left {
+          display: flex;
+          align-items: center;
+          gap: 0.625rem;
+        }
+
+        .permission-row__icon { font-size: 1.125rem; }
+
+        .permission-row__label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: var(--theme-text);
+        }
+
+        .permission-row__sub {
+          font-size: 0.75rem;
+          color: var(--theme-muted-text);
+        }
+
+        .permission-badge {
+          font-size: 0.7rem;
+          font-weight: 600;
+          padding: 0.2rem 0.6rem;
+          border-radius: 99px;
+          background: var(--theme-border);
+          color: var(--theme-secondary-text);
+          letter-spacing: 0.05em;
+        }
+
+        .start-btn {
+          width: 100%;
+          padding: 0.9375rem;
+          border-radius: 0.875rem;
+          font-size: 1rem;
+          font-weight: 600;
+          color: white;
+          cursor: not-allowed;
+          border: none;
+          opacity: 0.45;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .coming-soon-note {
+          text-align: center;
+          font-size: 0.8125rem;
+          color: var(--theme-muted-text);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.375rem;
+        }
+
+        .coming-soon-pill {
+          display: inline-block;
+          padding: 0.2rem 0.625rem;
+          border-radius: 99px;
+          background: var(--theme-surface-alt);
+          border: 1px solid var(--theme-border);
+          font-size: 0.7rem;
+          font-weight: 600;
+          letter-spacing: 0.05em;
+          color: var(--theme-muted-text);
+        }
+
+        .summary-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 40vh;
+          gap: 1rem;
+          color: var(--theme-secondary-text);
+          font-size: 0.9rem;
+        }
+
+        .summary-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid var(--theme-border);
+          border-top-color: var(--theme-primary);
+          border-radius: 50%;
+          animation: spin 700ms linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .summary-error-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 40vh;
+          padding: 1rem;
+        }
+
+        .summary-error {
+          text-align: center;
+          color: var(--theme-secondary-text);
+        }
+
+        .summary-error button {
+          margin-top: 1rem;
+          padding: 0.5rem 1.25rem;
+          border-radius: 0.625rem;
+          border: 1px solid var(--theme-border);
+          background: var(--theme-surface);
+          color: var(--theme-text);
+          cursor: pointer;
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+      `}</style>
+
+      <div className="summary-page">
+        <div className="summary-container">
+          <button className="summary-back-btn" onClick={() => navigate(`/interview/${session.mode}`)}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M13 8H3M7 4L3 8l4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Edit Configuration
+          </button>
+
+          <div
+            className="summary-badge"
+            style={{ background: `${meta.softBg}`, border: `1px solid ${meta.softBorder}`, color: meta.accent }}
+          >
+            {meta.badge}
+          </div>
+          <h1 className="summary-title">Interview Summary</h1>
+          <p className="summary-subtitle">Review your configuration before starting the interview.</p>
+
+          {/* Session details card */}
+          <div className="summary-card">
+            <p className="summary-card__heading">Session Configuration</p>
+
+            <InfoRow label="Mode" value={meta.label} />
+
+            {/* Learning mode fields */}
+            {session.mode === 'learning' && (
+              <>
+                <InfoRow label="Topic" value={session.topic} />
+                <InfoRow label="Difficulty" value={session.difficulty} />
+              </>
+            )}
+
+            {/* Placement mode fields */}
+            {session.mode === 'placement' && (
+              <>
+                <InfoRow label="Company" value={session.company} />
+                <InfoRow label="Role" value={session.role} />
+                <InfoRow label="Experience Level" value={session.experienceLevel} />
+                <InfoRow label="Interview Round" value={session.round} />
+              </>
+            )}
+
+            <InfoRow label="Status" value={session.status.charAt(0).toUpperCase() + session.status.slice(1)} />
+            <InfoRow
+              label="Created"
+              value={new Date(session.createdAt).toLocaleString('en-IN', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            />
+          </div>
+
+          {/* Camera & Mic Preparation (Placeholder) */}
+          <div className="camera-card">
+            <p className="camera-card__heading">🎙️ Interview Environment</p>
+
+            <div className="permission-row">
+              <div className="permission-row__left">
+                <span className="permission-row__icon">📷</span>
+                <div>
+                  <p className="permission-row__label">Camera Access</p>
+                  <p className="permission-row__sub">Required for interview monitoring</p>
+                </div>
+              </div>
+              <span className="permission-badge">COMING SOON</span>
+            </div>
+
+            <div className="permission-row">
+              <div className="permission-row__left">
+                <span className="permission-row__icon">🎤</span>
+                <div>
+                  <p className="permission-row__label">Microphone Access</p>
+                  <p className="permission-row__sub">Required for voice answers</p>
+                </div>
+              </div>
+              <span className="permission-badge">COMING SOON</span>
+            </div>
+
+            <div className="permission-row">
+              <div className="permission-row__left">
+                <span className="permission-row__icon">🌐</span>
+                <div>
+                  <p className="permission-row__label">Environment Check</p>
+                  <p className="permission-row__sub">Network & browser compatibility</p>
+                </div>
+              </div>
+              <span className="permission-badge">COMING SOON</span>
+            </div>
+          </div>
+
+          {/* Start Interview (disabled placeholder) */}
+          <button
+            type="button"
+            className="start-btn"
+            disabled
+            style={{ background: `linear-gradient(135deg, ${meta.accent}, ${meta.accent}cc)` }}
+            title="AI interview coming soon"
+          >
+            <span>🚀</span>
+            Start AI Interview
+          </button>
+
+          <p className="coming-soon-note">
+            <span className="coming-soon-pill">COMING SOON</span>
+            Voice + camera AI interviews will be available in the next release.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default SessionSummaryPage;

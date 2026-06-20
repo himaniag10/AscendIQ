@@ -52,18 +52,6 @@ const profileSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    targetRole: {
-      type: String,
-      default: '',
-      trim: true,
-      maxlength: [100, 'Target role cannot exceed 100 characters'],
-    },
-    targetCompany: {
-      type: String,
-      default: '',
-      trim: true,
-      maxlength: [100, 'Target company cannot exceed 100 characters'],
-    },
     resumeUrl: {
       type: String,
       default: '',

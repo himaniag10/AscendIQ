@@ -13,8 +13,6 @@ const emptyProfile = {
   branch: '',
   graduationYear: '',
   skills: [],
-  targetRole: '',
-  targetCompany: '',
   resumeUrl: '',
   bio: '',
   completion: 0,
@@ -352,11 +350,9 @@ function ProfilePage() {
           </section>
 
           <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-[var(--theme-text)]">Career Information</h2>
+            <h2 className="text-xl font-semibold text-[var(--theme-text)]">Skills</h2>
             <div className="mt-5 space-y-5">
               <Input label="Skills" name="skills" value={form.skills} onChange={handleChange} placeholder="React, Node.js, MongoDB" />
-              <Input label="Target Role" name="targetRole" value={form.targetRole} onChange={handleChange} />
-              <Input label="Target Company" name="targetCompany" value={form.targetCompany} onChange={handleChange} />
             </div>
           </section>
 
@@ -404,10 +400,8 @@ function ProfilePage() {
           </section>
 
           <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-[var(--theme-text)]">Career Information</h2>
+            <h2 className="text-xl font-semibold text-[var(--theme-text)]">Skills</h2>
             <div className="mt-5 grid gap-4">
-              <Field label="Target Role" value={profile.targetRole} />
-              <Field label="Target Company" value={profile.targetCompany} />
               <div className="rounded-xl bg-[var(--theme-surface-alt)] p-4">
                 <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Skills</p>
                 <div className="mt-3 flex flex-wrap gap-2">

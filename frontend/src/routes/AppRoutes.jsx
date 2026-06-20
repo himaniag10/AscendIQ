@@ -6,6 +6,9 @@ import VerifyOtpPage from '../pages/Auth/VerifyOtpPage.jsx';
 import ForgotPasswordPage from '../pages/Auth/ForgotPasswordPage.jsx';
 import DashboardPage from '../pages/Dashboard/DashboardPage.jsx';
 import ProfilePage from '../pages/Profile/ProfilePage.jsx';
+import LearningSetupPage from '../pages/Interview/LearningSetupPage.jsx';
+import PlacementSetupPage from '../pages/Interview/PlacementSetupPage.jsx';
+import SessionSummaryPage from '../pages/Interview/SessionSummaryPage.jsx';
 import { ProtectedRoute } from './ProtectedRoute.jsx';
 
 export function AppRoutes() {
@@ -29,6 +32,30 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interview/learning"
+        element={
+          <ProtectedRoute>
+            <LearningSetupPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interview/placement"
+        element={
+          <ProtectedRoute>
+            <PlacementSetupPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interview/summary/:sessionId"
+        element={
+          <ProtectedRoute>
+            <SessionSummaryPage />
           </ProtectedRoute>
         }
       />

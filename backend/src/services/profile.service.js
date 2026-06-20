@@ -20,8 +20,6 @@ const buildProfilePayload = (data, user) => {
     branch: data.branch?.trim() || '',
     graduationYear: data.graduationYear ? Number(data.graduationYear) : null,
     skills: normalizeSkills(data.skills),
-    targetRole: data.targetRole?.trim() || '',
-    targetCompany: data.targetCompany?.trim() || '',
     resumeUrl: data.resumeUrl?.trim() || '',
     bio: data.bio?.trim() || '',
   };
@@ -64,8 +62,6 @@ export const calculateProfileCompletion = (profile) => {
     profile.branch,
     profile.graduationYear,
     profile.skills?.length,
-    profile.targetRole,
-    profile.targetCompany,
     profile.resumeUrl,
     profile.bio,
   ];

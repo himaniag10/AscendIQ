@@ -26,8 +26,6 @@ export const validateProfile = (req, res, next) => {
     branch,
     graduationYear,
     skills,
-    targetRole,
-    targetCompany,
     resumeUrl,
     bio,
   } = req.body;
@@ -39,8 +37,6 @@ export const validateProfile = (req, res, next) => {
   optionalString(college, 120, 'College', errors);
   optionalString(degree, 80, 'Degree', errors);
   optionalString(branch, 80, 'Branch', errors);
-  optionalString(targetRole, 100, 'Target role', errors);
-  optionalString(targetCompany, 100, 'Target company', errors);
   optionalString(resumeUrl, 500, 'Resume URL', errors);
   optionalString(bio, 600, 'Bio', errors);
   optionalUrl(profileImageUrl, 'Profile image URL', errors);

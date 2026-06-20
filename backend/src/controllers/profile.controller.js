@@ -18,8 +18,6 @@ const formatProfile = (profile, user) => ({
   branch: profile?.branch || '',
   graduationYear: profile?.graduationYear || '',
   skills: profile?.skills || [],
-  targetRole: profile?.targetRole || '',
-  targetCompany: profile?.targetCompany || '',
   resumeUrl: profile?.resumeUrl || '',
   resumePublicId: profile?.resumePublicId || '',
   resumeFileName: profile?.resumeFileName || '',
