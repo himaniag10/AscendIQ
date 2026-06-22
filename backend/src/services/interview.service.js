@@ -4,7 +4,7 @@ import InterviewSession from '../models/interviewSession.model.js';
  * Create a new interview session for a user.
  */
 export async function createSession(userId, payload) {
-  const { mode, topic, difficulty, company, role, experienceLevel, round } = payload;
+  const { mode, topic, difficulty, company, role, experienceLevel, round, duration } = payload;
 
   const session = await InterviewSession.create({
     userId,
@@ -15,6 +15,7 @@ export async function createSession(userId, payload) {
     role: role || '',
     experienceLevel: experienceLevel || '',
     round: round || '',
+    duration: duration || 15,
     status: 'draft',
   });
 

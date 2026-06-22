@@ -27,11 +27,16 @@ const formatProfile = (profile, user) => ({
   isCompleted: calculateProfileCompletion(profile) >= 70,
   createdAt: profile?.createdAt || null,
   updatedAt: profile?.updatedAt || null,
+  stats: profile?.stats || { interviewsCompleted: 0, currentStreak: 0, averageReadiness: 0 },
+  weaknesses: profile?.weaknesses || [],
+  learningPath: profile?.learningPath || [],
 });
 
 export const getMyProfile = async (req, res, next) => {
   try {
+    console.log('DASHBOARD_QUERY');
     const profile = await getProfileByUserId(req.user._id);
+    console.log('DASHBOARD_RESPONSE');
     res.status(200).json({
       success: true,
       profile: formatProfile(profile, req.user),

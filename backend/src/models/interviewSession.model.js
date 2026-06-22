@@ -60,6 +60,22 @@ const interviewSessionSchema = new mongoose.Schema(
       default: 15, // in minutes
     },
 
+    questions: [
+      {
+        question: String,
+        answer: String,
+        timestamp: Date
+      }
+    ],
+
+    transcript: [
+      {
+        role: String,
+        content: String,
+        timestamp: Date
+      }
+    ],
+
     // Post-interview analysis
     readiness: {
       technicalAccuracy: { type: Number, min: 0, max: 100, default: 0 },

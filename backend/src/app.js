@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.routes.js';
 import profileRoutes from './routes/profile.routes.js';
 import interviewRoutes from './routes/interview.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import goalRoutes from './routes/goal.routes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
@@ -38,6 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/goals', goalRoutes);
 
 // Handle undefined routes (404)
 app.use('*', (req, res, next) => {

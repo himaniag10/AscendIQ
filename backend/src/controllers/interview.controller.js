@@ -1,5 +1,6 @@
 import * as interviewService from '../services/interview.service.js';
-import { generateFirstQuestion, generateNextResponse, generateInterviewAnalysis, generateLearningPath } from '../services/aiProvider.service.js';
+import { generateFirstQuestion, generateNextResponse, generateInterviewAnalysis, generateLearningPath, getActiveProvider } from '../services/aiProvider.service.js';
+import { calculateReadiness } from '../services/readinessEngine.js';
 import InterviewSession from '../models/interviewSession.model.js';
 import InterviewMessage from '../models/interviewMessage.model.js';
 import Profile from '../models/profile.model.js';
@@ -10,7 +11,7 @@ import Profile from '../models/profile.model.js';
  */
 export async function createSession(req, res, next) {
   try {
-    const { mode, topic, difficulty, company, role, experienceLevel, round } = req.body;
+    const { mode, topic, difficulty, company, role, experienceLevel, round, duration } = req.body;
 
     // Validate mode
     if (!mode || !['learning', 'placement'].includes(mode)) {
@@ -60,6 +61,7 @@ export async function createSession(req, res, next) {
       role,
       experienceLevel,
       round,
+      duration,
     });
 
     res.status(201).json({ success: true, session });
@@ -88,7 +90,7 @@ export async function getMySessions(req, res, next) {
 export async function getSession(req, res, next) {
   try {
     const session = await interviewService.getSessionById(req.params.id, req.user._id);
-    res.status(200).json({ success: true, session });
+    res.status(200).json({ success: true, session, provider: getActiveProvider() });
   } catch (err) {
     next(err);
   }
@@ -117,7 +119,9 @@ export async function updateSessionStatus(req, res, next) {
  */
 export async function startInterview(req, res, next) {
   try {
-    const { sessionId, mode, topic, difficulty, company, role, experienceLevel, round } = req.body;
+    const { sessionId, mode, topic, difficulty, company, role, experienceLevel, round, duration } = req.body;
+
+    console.log('INTERVIEW_STARTED');
 
     let session;
 
@@ -128,6 +132,9 @@ export async function startInterview(req, res, next) {
           success: false,
           message: 'Interview session not found.',
         });
+      }
+      if (duration && duration !== session.duration) {
+         session.duration = duration;
       }
     } else {
       // Validate mode
@@ -179,13 +186,15 @@ export async function startInterview(req, res, next) {
         role: role || '',
         experienceLevel: experienceLevel || '',
         round: round || '',
+        duration: duration || 15,
       });
     }
 
-    // Call Gemini to generate the first question (with graceful error handling & 503 response)
+    // Call AI to generate the first question (with graceful error handling & 503 response)
     let firstQuestion;
     try {
       firstQuestion = await generateFirstQuestion(session);
+      console.log('QUESTION_GENERATED');
     } catch (aiErr) {
       console.error('AI error during interview start:', aiErr);
       return res.status(503).json({
@@ -197,6 +206,11 @@ export async function startInterview(req, res, next) {
     session.status = 'scheduled';
     session.startedAt = new Date();
     session.firstQuestion = firstQuestion;
+
+    // Add to session transcript and questions
+    session.questions = [{ question: firstQuestion, timestamp: new Date() }];
+    session.transcript = [{ role: 'ai', content: firstQuestion, timestamp: new Date() }];
+
     await session.save();
 
     // Store first question as message #1
@@ -211,6 +225,7 @@ export async function startInterview(req, res, next) {
       success: true,
       sessionId: session._id,
       firstQuestion,
+      provider: getActiveProvider(),
     });
   } catch (err) {
     next(err);
@@ -226,6 +241,8 @@ export async function sendMessage(req, res, next) {
     const { sessionId } = req.params;
     const { candidateAnswer, conversationHistory = [] } = req.body;
 
+    console.log('ANSWER_RECEIVED');
+
     if (!candidateAnswer || !candidateAnswer.trim()) {
       return res.status(400).json({ success: false, message: 'candidateAnswer is required.' });
     }
@@ -234,6 +251,19 @@ export async function sendMessage(req, res, next) {
     if (!session) {
       return res.status(404).json({ success: false, message: 'Interview session not found.' });
     }
+
+    // Assign answer to the latest question in the session.questions array
+    if (session.questions && session.questions.length > 0) {
+      session.questions[session.questions.length - 1].answer = candidateAnswer.trim();
+    } else {
+      // Fallback if array is empty somehow
+      session.questions = [{ question: '', answer: candidateAnswer.trim(), timestamp: new Date() }];
+    }
+    
+    // Add to transcript
+    session.transcript.push({ role: 'candidate', content: candidateAnswer.trim(), timestamp: new Date() });
+    
+    console.log('ANSWER_SAVED');
 
     // Count existing messages to assign sequence numbers
     const existingCount = await InterviewMessage.countDocuments({ sessionId });
@@ -246,10 +276,11 @@ export async function sendMessage(req, res, next) {
       sequenceNumber: existingCount + 1,
     });
 
-    // Generate AI follow-up via Gemini
+    // Generate AI follow-up via AI Provider
     let aiResponseObj;
     try {
       aiResponseObj = await generateNextResponse(session, conversationHistory, candidateAnswer.trim());
+      console.log('QUESTION_GENERATED');
     } catch (aiErr) {
       console.error('AI error during sendMessage:', aiErr);
       return res.status(503).json({
@@ -259,6 +290,11 @@ export async function sendMessage(req, res, next) {
     }
 
     const combinedText = `${aiResponseObj.feedback} ${aiResponseObj.nextQuestion}`;
+
+    // Update Session with AI's question and transcript
+    session.questions.push({ question: aiResponseObj.nextQuestion, timestamp: new Date() });
+    session.transcript.push({ role: 'ai', content: combinedText, timestamp: new Date() });
+    await session.save();
 
     // Save AI response
     await InterviewMessage.create({
@@ -272,7 +308,8 @@ export async function sendMessage(req, res, next) {
       success: true, 
       aiResponse: combinedText,
       feedback: aiResponseObj.feedback,
-      nextQuestion: aiResponseObj.nextQuestion
+      nextQuestion: aiResponseObj.nextQuestion,
+      provider: getActiveProvider()
     });
   } catch (err) {
     next(err);
@@ -319,38 +356,60 @@ export async function analyzeInterview(req, res, next) {
       return res.status(200).json({ success: true, session });
     }
 
-    // Fetch full conversation
-    const messages = await InterviewMessage.find({ sessionId }).sort({ sequenceNumber: 1 });
+    console.log('INTERVIEW_COMPLETED');
+    console.log('ANALYSIS_STARTED');
+
+    // Use full session transcript for accurate analysis instead of refetching
+    // We pass it to the generator
     
     // 1. Generate Interview Analysis
     let analysis;
     try {
-      analysis = await generateInterviewAnalysis(session, messages);
+      analysis = await generateInterviewAnalysis(session, session.transcript);
+      console.log('ANALYSIS_COMPLETED');
     } catch (analysisErr) {
-      console.error('[Controller] generateInterviewAnalysis failed, using fallback:', analysisErr);
-      analysis = {
-        readiness: {
-          technicalAccuracy: 50,
-          communication: 50,
-          confidence: 50,
-          completeness: 50,
-          overallScore: 50
-        },
-        feedback: {
-          strengths: ["Completed the interview session."],
-          weaknesses: ["Detailed analysis unavailable due to service limits."],
-          improvementAreas: ["Review your answers manually from the transcript."]
-        }
-      };
+      const errorMsg = 'Analysis unavailable.\nAI provider failed to evaluate this interview.';
+      console.error(errorMsg, analysisErr);
+      return res.status(503).json({
+        success: false,
+        message: errorMsg,
+        error: analysisErr.message
+      });
     }
     
+    // Calculate accurate readiness
+    const overallScore = calculateReadiness(
+      analysis.readiness.technicalAccuracy || 0,
+      analysis.readiness.communication || 0,
+      analysis.readiness.confidence || 0,
+      analysis.readiness.completeness || 0
+    );
+    analysis.readiness.overallScore = overallScore;
+    console.log('READINESS_CALCULATED');
+
     // 2. Save Analysis to Session
     session.readiness = analysis.readiness;
     session.feedback = analysis.feedback;
+    
+    console.log('WEAKNESSES_EXTRACTED');
+    
+    // Try to update session
     await session.save();
+    console.log('ANALYSIS_SAVED');
+    console.log('INTERVIEW_SAVED');
 
-    // 3. Aggregate Stats to Profile
-    const profile = await Profile.findOne({ user: req.user._id });
+    // 3. Aggregate Stats to Profile (using findOneAndUpdate to prevent VersionErrors)
+    let profile = await Profile.findOne({ user: req.user._id });
+    if (!profile) {
+      profile = new Profile({
+        user: req.user._id,
+        stats: { interviewsCompleted: 0, currentStreak: 0, averageReadiness: 0 },
+        weaknesses: [],
+        learningPath: []
+      });
+      await profile.save();
+    }
+    
     if (profile) {
       profile.stats.interviewsCompleted += 1;
       profile.stats.currentStreak += 1; // Simplistic streak increment for now
@@ -370,7 +429,17 @@ export async function analyzeInterview(req, res, next) {
       const newPath = await generateLearningPath(profile.weaknesses);
       profile.learningPath = newPath;
 
-      await profile.save();
+      await Profile.findOneAndUpdate(
+        { user: req.user._id },
+        { 
+          $set: { 
+            stats: profile.stats,
+            weaknesses: profile.weaknesses,
+            learningPath: profile.learningPath
+          }
+        }
+      );
+      console.log('DASHBOARD_UPDATED');
     }
 
     res.status(200).json({ success: true, session });

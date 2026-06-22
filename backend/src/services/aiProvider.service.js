@@ -141,20 +141,31 @@ async function callOpenRouter(prompt) {
  * Unified generation with fallback logic
  */
 async function generateContent(prompt) {
+  console.log('Using Gemini');
   try {
-    currentActiveProvider = 'Groq';
-    return await callGroq(prompt);
-  } catch (groqError) {
-    console.warn(`[AI Provider] Groq Failed: ${groqError.message}. Triggering fallback to Gemini...`);
+    currentActiveProvider = 'Gemini';
+    return await callGemini(prompt);
+  } catch (geminiError) {
+    console.log('Gemini failed');
+    console.error(`Gemini Error details: ${geminiError.message}`);
+    
+    console.log('Switching to Grok');
     try {
-      currentActiveProvider = 'Gemini';
-      return await callGemini(prompt);
-    } catch (geminiError) {
-      console.warn(`[AI Provider] Gemini Failed: ${geminiError.message}. Triggering fallback to OpenRouter...`);
+      currentActiveProvider = 'Groq';
+      return await callGroq(prompt);
+    } catch (groqError) {
+      console.log('Grok failed');
+      console.error(`Grok Error details: ${groqError.message}`);
+      
+      console.log('Switching to OpenRouter');
       try {
         currentActiveProvider = 'OpenRouter';
-        return await callOpenRouter(prompt);
+        const result = await callOpenRouter(prompt);
+        console.log('OpenRouter success');
+        return result;
       } catch (openRouterError) {
+        console.log('OpenRouter failed');
+        console.error(`OpenRouter Error details: ${openRouterError.message}`);
         console.error(`[AI Provider] All providers failed.`);
         throw new Error('AI Services temporarily unavailable. Please try again later.');
       }
@@ -240,6 +251,7 @@ Now respond as the interviewer. You MUST return your response as a valid JSON ob
 }
 CRITICAL RULES:
 - Never ask two questions in the nextQuestion string.
+- You MUST provide exactly ONE single question. NEVER combine multiple questions.
 - Provide exactly 1 feedback statement and 1 next question. Maximum.
 - Do NOT wrap the response in markdown blocks. Just return raw JSON.`;
 
@@ -276,8 +288,7 @@ The JSON must exactly match this structure:
     "technicalAccuracy": <number 0-100>,
     "communication": <number 0-100>,
     "confidence": <number 0-100>,
-    "completeness": <number 0-100>,
-    "overallScore": <number 0-100>
+    "completeness": <number 0-100>
   },
   "feedback": {
     "strengths": ["<strength 1>", "<strength 2>"],
