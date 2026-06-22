@@ -1,22 +1,69 @@
 /**
- * Gemini AI Service
- * Uses the Gemini REST API directly (no SDK required, compatible with Node 18+).
+ * AI Provider Service
+ * Supports multiple providers with a prioritized fallback mechanism.
+ * Priority: Groq -> Gemini -> OpenRouter
  */
 
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const OPENROUTER_MODEL = 'meta-llama/llama-3-8b-instruct:free'; // Fallback to free meta-llama for OpenRouter if needed
+
+// Keeps track of the active provider
+let currentActiveProvider = 'Groq';
+
+export function getActiveProvider() {
+  return currentActiveProvider;
+}
 
 /**
- * Internal: call Gemini REST API with a given prompt string.
+ * Call Groq API
+ */
+async function callGroq(prompt) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY is not configured');
+
+  const startTime = Date.now();
+  console.log('[AI Provider] Attempting Groq...');
+
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+      max_tokens: 1024
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Groq API Error ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices[0]?.message?.content;
+  if (!text) throw new Error('No text returned from Groq');
+
+  console.log(`[AI Provider] Groq Success. Time: ${Date.now() - startTime}ms. Tokens: ${data.usage?.total_tokens || 'Unknown'}`);
+  return text.trim();
+}
+
+/**
+ * Call Gemini API
  */
 async function callGemini(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error('[Gemini] Error: GEMINI_API_KEY is not configured in the environment.');
-    throw new Error('GEMINI_API_KEY is not configured in the environment.');
-  }
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-  console.log('[Gemini] Initialization: API Key is present.');
+  const startTime = Date.now();
+  console.log('[AI Provider] Attempting Gemini...');
 
   const requestBody = {
     contents: [{ parts: [{ text: prompt }] }],
@@ -32,35 +79,87 @@ async function callGemini(prompt) {
     ],
   };
 
-  console.log(`[Gemini] Request sent to ${GEMINI_API_URL}`);
-
-  let response;
-  try {
-    response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
-  } catch (networkError) {
-    console.error('[Gemini] Network error during fetch:', networkError);
-    throw new Error(`Network error calling Gemini: ${networkError.message}`);
-  }
+  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[Gemini] Error Response (Status: ${response.status}):`, errorBody);
-    throw new Error(`Gemini API returned status ${response.status}: ${errorBody}`);
+    const errorText = await response.text();
+    throw new Error(`Gemini API Error ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
-  console.log('[Gemini] Response received successfully.');
-
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    console.error('[Gemini] Parsing Error: No text found in response data:', JSON.stringify(data));
-    throw new Error('No text returned from Gemini API response.');
-  }
+  if (!text) throw new Error('No text returned from Gemini');
+
+  console.log(`[AI Provider] Gemini Success. Time: ${Date.now() - startTime}ms.`);
   return text.trim();
+}
+
+/**
+ * Call OpenRouter API
+ */
+async function callOpenRouter(prompt) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
+
+  const startTime = Date.now();
+  console.log('[AI Provider] Attempting OpenRouter...');
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://ascendiq.app',
+      'X-Title': 'AscendIQ'
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+      max_tokens: 1024
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API Error ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices[0]?.message?.content;
+  if (!text) throw new Error('No text returned from OpenRouter');
+
+  console.log(`[AI Provider] OpenRouter Success. Time: ${Date.now() - startTime}ms. Tokens: ${data.usage?.total_tokens || 'Unknown'}`);
+  return text.trim();
+}
+
+/**
+ * Unified generation with fallback logic
+ */
+async function generateContent(prompt) {
+  try {
+    currentActiveProvider = 'Groq';
+    return await callGroq(prompt);
+  } catch (groqError) {
+    console.warn(`[AI Provider] Groq Failed: ${groqError.message}. Triggering fallback to Gemini...`);
+    try {
+      currentActiveProvider = 'Gemini';
+      return await callGemini(prompt);
+    } catch (geminiError) {
+      console.warn(`[AI Provider] Gemini Failed: ${geminiError.message}. Triggering fallback to OpenRouter...`);
+      try {
+        currentActiveProvider = 'OpenRouter';
+        return await callOpenRouter(prompt);
+      } catch (openRouterError) {
+        console.error(`[AI Provider] All providers failed.`);
+        throw new Error('AI Services temporarily unavailable. Please try again later.');
+      }
+    }
+  }
 }
 
 /**
@@ -112,7 +211,6 @@ function buildConversationBlock(history) {
 
 /**
  * Generate the first interview question.
- * Called when the interview starts.
  */
 export async function generateFirstQuestion(session) {
   const systemContext = buildSystemContext(session);
@@ -120,24 +218,11 @@ export async function generateFirstQuestion(session) {
 
 Start the interview now. Ask your first interview question. Ask ONLY the question — no greeting, no introduction, no explanation. Just the question itself.`;
 
-  console.log('[Gemini] Prompt generated for generateFirstQuestion.');
-
-  try {
-    return await callGemini(prompt);
-  } catch (error) {
-    console.error('[Gemini] Error (generateFirstQuestion):', error.message);
-    throw new Error(`Failed to generate first question: ${error.message}`);
-  }
+  return await generateContent(prompt);
 }
 
 /**
  * Generate the next interviewer response (feedback + follow-up question).
- * Called after each candidate answer.
- *
- * @param {Object} session - The InterviewSession document.
- * @param {Array}  conversationHistory - Array of {role, content} objects.
- * @param {string} candidateAnswer - The latest candidate answer.
- * @returns {Promise<string>} - The AI's next response (acknowledgment + question).
  */
 export async function generateNextResponse(session, conversationHistory, candidateAnswer) {
   const systemContext = buildSystemContext(session);
@@ -158,32 +243,21 @@ CRITICAL RULES:
 - Provide exactly 1 feedback statement and 1 next question. Maximum.
 - Do NOT wrap the response in markdown blocks. Just return raw JSON.`;
 
-  console.log('[Gemini] Prompt generated for generateNextResponse.');
-
   try {
-    const rawResponse = await callGemini(prompt);
-    try {
-      const cleanedJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-      return JSON.parse(cleanedJson);
-    } catch (parseError) {
-      console.error('[Gemini] JSON Parse Error (generateNextResponse):', parseError.message);
-      // Fallback response if Gemini hallucinates non-JSON
-      return {
-        feedback: "Interesting point.",
-        nextQuestion: "Can you elaborate further?"
-      };
-    }
+    const rawResponse = await generateContent(prompt);
+    const cleanedJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanedJson);
   } catch (error) {
-    console.error('[Gemini] Error (generateNextResponse):', error.message);
-    throw new Error(`Failed to generate follow-up response: ${error.message}`);
+    console.error('[AI Provider] JSON Parse Error or Generation Error (generateNextResponse):', error.message);
+    return {
+      feedback: "Interesting point.",
+      nextQuestion: "Can you elaborate further?"
+    };
   }
 }
 
 /**
- * Generate post-interview analysis: readiness scores and strengths/weaknesses.
- * @param {Object} session - The InterviewSession document.
- * @param {Array}  conversationHistory - Array of {role, content} objects.
- * @returns {Promise<Object>} - Parsed JSON object containing readiness and feedback.
+ * Generate post-interview analysis.
  */
 export async function generateInterviewAnalysis(session, conversationHistory) {
   const systemContext = buildSystemContext(session);
@@ -218,28 +292,18 @@ Guidelines for scoring:
 - Provide 2-3 items for each array in feedback.
 `;
 
-  console.log('[Gemini] Prompt generated for generateInterviewAnalysis.');
-
+  const rawResponse = await generateContent(prompt);
   try {
-    const rawResponse = await callGemini(prompt);
-    try {
-      // Remove potential markdown code blocks
-      const cleanedJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-      return JSON.parse(cleanedJson);
-    } catch (parseError) {
-      console.error('[Gemini] JSON Parse Error (generateInterviewAnalysis):', parseError.message);
-      throw new Error(`Failed to parse analysis JSON: ${parseError.message}`);
-    }
-  } catch (error) {
-    console.error('[Gemini] Error (generateInterviewAnalysis):', error.message);
-    throw new Error(`Failed to generate interview analysis: ${error.message}`);
+    const cleanedJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanedJson);
+  } catch (parseError) {
+    console.error('[AI Provider] JSON Parse Error (generateInterviewAnalysis):', parseError.message);
+    throw new Error(`Failed to parse analysis JSON: ${parseError.message}`);
   }
 }
 
 /**
- * Generate a personalized learning path based on accumulated weaknesses.
- * @param {Array<string>} weaknesses - List of all weaknesses gathered from past interviews.
- * @returns {Promise<Array<string>>} - Array of actionable learning steps.
+ * Generate a personalized learning path.
  */
 export async function generateLearningPath(weaknesses) {
   if (!weaknesses || weaknesses.length === 0) {
@@ -260,17 +324,13 @@ The JSON must exactly match this structure:
   "learningPath": ["<step 1>", "<step 2>", "<step 3>"]
 }`;
 
-  console.log('[Gemini] Prompt generated for generateLearningPath.');
-
   try {
-    const rawResponse = await callGemini(prompt);
+    const rawResponse = await generateContent(prompt);
     const cleanedJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanedJson);
     return parsed.learningPath || [];
   } catch (error) {
-    console.error('[Gemini] Error (generateLearningPath):', error.message);
-    // Return a fallback rather than breaking the whole flow
+    console.error('[AI Provider] Error (generateLearningPath):', error.message);
     return ["Review recent interview feedback to identify areas for improvement."];
   }
 }
-

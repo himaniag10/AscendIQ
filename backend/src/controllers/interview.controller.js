@@ -1,5 +1,5 @@
 import * as interviewService from '../services/interview.service.js';
-import { generateFirstQuestion, generateNextResponse, generateInterviewAnalysis, generateLearningPath } from '../services/gemini.service.js';
+import { generateFirstQuestion, generateNextResponse, generateInterviewAnalysis, generateLearningPath } from '../services/aiProvider.service.js';
 import InterviewSession from '../models/interviewSession.model.js';
 import InterviewMessage from '../models/interviewMessage.model.js';
 import Profile from '../models/profile.model.js';
@@ -186,11 +186,11 @@ export async function startInterview(req, res, next) {
     let firstQuestion;
     try {
       firstQuestion = await generateFirstQuestion(session);
-    } catch (geminiErr) {
-      console.error('Gemini error during interview start:', geminiErr);
+    } catch (aiErr) {
+      console.error('AI error during interview start:', aiErr);
       return res.status(503).json({
         success: false,
-        message: `Unable to start interview: ${geminiErr.message}`,
+        message: `Unable to start interview: ${aiErr.message}`,
       });
     }
 
@@ -250,8 +250,8 @@ export async function sendMessage(req, res, next) {
     let aiResponseObj;
     try {
       aiResponseObj = await generateNextResponse(session, conversationHistory, candidateAnswer.trim());
-    } catch (geminiErr) {
-      console.error('Gemini error during sendMessage:', geminiErr);
+    } catch (aiErr) {
+      console.error('AI error during sendMessage:', aiErr);
       return res.status(503).json({
         success: false,
         message: 'AI service temporarily unavailable. Please try again.',
