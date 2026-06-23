@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/Button.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
 import { Input } from '../../components/ui/Input.jsx';
 import { profileService } from '../../services/profile.service.js';
+import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 
 const emptyProfile = {
   fullName: '',
@@ -278,7 +279,7 @@ function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <DashboardLayout>
       <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
@@ -445,7 +446,7 @@ function ProfilePage() {
           </section>
         </div>
       )}
-    </div>
+    </DashboardLayout>
   );
 }
 

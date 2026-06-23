@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { interviewService } from '../../services/interview.service.js';
+import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 
 const MODE_META = {
   learning: {
@@ -136,7 +137,7 @@ function SessionSummaryPage() {
         setSession(data.session);
       }
     } catch (err) {
-      setAnalysisError('Failed to analyze interview. Please try again later.');
+      setAnalysisError(err?.response?.data?.message || 'Analysis unavailable.\nAI provider failed to evaluate this interview.');
     } finally {
       setAnalyzing(false);
     }
@@ -165,12 +166,10 @@ function SessionSummaryPage() {
   }
 
   return (
-    <>
+    <DashboardLayout>
       <style>{`
         .summary-page {
-          min-height: calc(100vh - 4rem);
-          background: var(--theme-background);
-          padding: 3rem 1rem;
+          background: transparent;
         }
 
         .summary-container {
@@ -524,7 +523,7 @@ function SessionSummaryPage() {
           )}
 
           {analysisError && (
-            <div className="error-msg" style={{ marginBottom: '1.5rem' }}>⚠️ {analysisError}</div>
+            <div className="error-msg" style={{ marginBottom: '1.5rem', whiteSpace: 'pre-wrap' }}>⚠️ {analysisError}</div>
           )}
 
           {session.status === 'completed' && !analyzing && session.readiness && session.readiness.overallScore > 0 && (
@@ -702,7 +701,7 @@ function SessionSummaryPage() {
           )}
         </div>
       </div>
-    </>
+    </DashboardLayout>
   );
 }
 

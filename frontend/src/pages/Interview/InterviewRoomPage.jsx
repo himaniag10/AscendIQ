@@ -95,7 +95,9 @@ function InterviewRoomContent() {
   // Voice / mic state
   const [transcript, setTranscript] = useState('');      // live interim transcript
   const [finalTranscript, setFinalTranscript] = useState(''); // accumulated final
+  const [manualAnswer, setManualAnswer] = useState(''); // fallback input
   const [interviewState, setInterviewState] = useState('GENERATING_NEXT_QUESTION');
+  const [currentProvider, setCurrentProvider] = useState('Loading...');
   const isListening = interviewState === 'WAITING_FOR_CANDIDATE';
   const isSpeaking = interviewState === 'AI_SPEAKING';
   const isThinking = interviewState === 'PROCESSING_ANSWER';
@@ -133,6 +135,7 @@ function InterviewRoomContent() {
             });
             setCurrentAiMessage(firstQ);
           }
+          if (data.provider) setCurrentProvider(data.provider);
           if (timeLeft === null) setTimeLeft((data.session.duration || 15) * 60);
         })
         .catch(err => {
@@ -173,7 +176,7 @@ function InterviewRoomContent() {
   const fns = useRef({});
 
   fns.current.stopListening = () => {
-    console.log('[Speech] Stopping recognition manually.');
+    console.log('Recognition Ended');
     clearTimeout(silenceTimerRef.current);
     recognitionRef.current?.stop();
     // Do not set state here, let the caller transition state (e.g. to PROCESSING_ANSWER)
@@ -182,7 +185,7 @@ function InterviewRoomContent() {
   fns.current.submitAnswer = async (answerText) => {
     if (!answerText || isThinkingRef.current) return;
     
-    console.log(`[Submit] Answer submitted: "${answerText}"`);
+    console.log('ANSWER_CAPTURED');
 
     fns.current.stopListening();
     clearTimeout(silenceTimerRef.current);
@@ -190,41 +193,46 @@ function InterviewRoomContent() {
     isThinkingRef.current = true;
 
     const candidateMsg = { role: 'candidate', content: answerText };
-    setConversation(prev => [...prev, candidateMsg]);
     setFinalTranscript('');
     setTranscript('');
+    setManualAnswer('');
+    
+    let newConversation;
+    setConversation(prev => {
+      newConversation = [...prev, candidateMsg];
+      return newConversation;
+    });
+
+    console.log('NEXT_QUESTION_REQUESTED');
 
     try {
-      setConversation(currentConv => {
-        const updatedConversation = [...currentConv];
-        const apiConversation = [...updatedConversation];
-        interviewService.sendMessage(sessionId, answerText, apiConversation)
-          .then(data => {
-            if (data.success) {
-              const aiMsg = { role: 'ai', content: data.aiResponse };
-              setConversation(prev => [...prev, aiMsg]);
-              setCurrentAiMessage(data.aiResponse);
-      
-              console.log('[Submit] AI Response received. Speaking...');
-              setInterviewState('AI_SPEAKING');
-              isThinkingRef.current = false;
-              speak(data.aiResponse).then(() => {
-                fns.current.startListening();
-              });
-            } else {
-              isThinkingRef.current = false;
-              console.error('[Submit] API returned error:', data.message);
-              fns.current.abortInterviewGracefully("We have reached the end of this interview session due to an unexpected error. Generating performance analysis...");
-            }
-          })
-          .catch(err => {
+      interviewService.sendMessage(sessionId, answerText, newConversation)
+        .then(data => {
+          if (data.success) {
+            console.log('NEXT_QUESTION_RECEIVED');
+            if (data.provider) setCurrentProvider(data.provider);
+            const aiMsg = { role: 'ai', content: data.aiResponse };
+            setConversation(prev => [...prev, aiMsg]);
+            setCurrentAiMessage(data.aiResponse);
+    
+            setInterviewState('AI_SPEAKING');
             isThinkingRef.current = false;
-            console.error('[Submit] Connection error:', err);
-            fns.current.abortInterviewGracefully("We have reached the end of this interview session. Thank you for your time.");
-          });
-
-        return currentConv; 
-      });
+            speak(data.aiResponse).then(() => {
+              fns.current.startListening();
+            });
+          } else {
+            isThinkingRef.current = false;
+            setInterviewState('WAITING_FOR_CANDIDATE');
+            setSpeechError(data.message || 'AI service failed. Please try answering again.');
+            console.error('[Submit] API returned error:', data.message);
+          }
+        })
+        .catch(err => {
+          isThinkingRef.current = false;
+          setInterviewState('WAITING_FOR_CANDIDATE');
+          setSpeechError('Network error. Please submit your answer again.');
+          console.error('[Submit] Connection error:', err);
+        });
     } catch (err) {
       setInterviewState('INTERVIEW_COMPLETE');
       setError('Unexpected error submitting answer.');
@@ -234,14 +242,15 @@ function InterviewRoomContent() {
   fns.current.startListening = () => {
     setSpeechError('');
     if (!SpeechRecognition) {
-      const msg = 'Speech Recognition is not supported in this browser.';
+      const msg = 'Speech recognition unsupported.\nUse Chrome or Edge.';
       console.error(msg);
       setSpeechError(msg);
       return;
+    } else {
+      console.log('SpeechRecognition Supported');
     }
     if (isListening || interviewState === 'INTERVIEW_COMPLETE') return;
 
-    console.log('[Speech] Initializing recognition...');
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -251,14 +260,15 @@ function InterviewRoomContent() {
     let accumulated = '';
 
     recognition.onstart = () => {
-      console.log('[InterviewPage] Speech recognition initialized successfully. Listening...');
+      console.log('Recognition Started');
     };
 
-    recognition.onaudiostart = () => console.log('[Speech] Audio capturing started.');
-    recognition.onsoundstart = () => console.log('[Speech] Sound detected.');
-    recognition.onspeechstart = () => console.log('[Speech] Speech detected.');
+    recognition.onaudiostart = () => {};
+    recognition.onsoundstart = () => {};
+    recognition.onspeechstart = () => console.log('Speech Detected');
 
     recognition.onresult = (event) => {
+      console.log('Transcript Received');
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -268,7 +278,7 @@ function InterviewRoomContent() {
           interim += result[0].transcript;
         }
       }
-      console.log(`[Speech] Transcript received - Interim: "${interim.trim()}" | Final: "${accumulated.trim()}"`);
+      console.log('Transcript Updated');
       
       setFinalTranscript(accumulated);
       setTranscript(interim);
@@ -277,7 +287,7 @@ function InterviewRoomContent() {
       if (accumulated.trim() || interim.trim()) {
         silenceTimerRef.current = setTimeout(() => {
           if (accumulated.trim()) {
-            console.log('[Speech] Silence detected for 2.5s. Auto-submitting...');
+            console.log('Auto submit triggered');
             fns.current.submitAnswer(accumulated.trim());
           }
         }, SILENCE_DELAY_MS);
@@ -285,14 +295,16 @@ function InterviewRoomContent() {
     };
 
     recognition.onerror = (e) => {
-      console.error('[Speech] SpeechRecognition error:', e.error);
+      console.log('Recognition Error');
+      const errMsg = e.error; // e.g. "network", "not-allowed", "no-speech"
+      setSpeechError(`Speech Recognition Error: ${errMsg}`);
       if (e.error !== 'no-speech') {
-        setSpeechError(`Speech API Error: ${e.error}`);
+        console.error(`Speech Recognition Error: ${errMsg}`);
       }
     };
 
     recognition.onend = () => {
-      console.log('[Speech] Recognition ended.');
+      console.log('Recognition Ended');
       // Do not transition state to false if it's meant to be something else.
     };
 
@@ -310,7 +322,7 @@ function InterviewRoomContent() {
   fns.current.abortInterviewGracefully = (closingMessage) => {
     setInterviewState('INTERVIEW_COMPLETE');
     fns.current.stopListening();
-    const finalMsg = closingMessage || "Thank you for participating in this interview. Your session has now concluded.";
+    const finalMsg = closingMessage || "Great job. Your interview session is now complete. I'm generating your performance report.";
     setConversation(prev => [...prev, { role: 'ai', content: finalMsg }]);
     setCurrentAiMessage(finalMsg);
     
@@ -370,7 +382,7 @@ function InterviewRoomContent() {
 
   // ── Manual submit (fallback button) ─────────────────────────────────────
   const handleManualSubmit = () => {
-    const answer = (finalTranscript + ' ' + transcript).trim();
+    const answer = (manualAnswer || (finalTranscript + ' ' + transcript)).trim();
     if (answer) {
       fns.current.submitAnswer(answer);
     }
@@ -792,18 +804,31 @@ function InterviewRoomContent() {
             </div>
 
             <div className="ir-ai-card">
-              <div className="ir-ai-label">Interview Status</div>
-              <div className="ir-ai-status-row" style={{ marginBottom: '0.5rem' }}>
-                <span className={`ir-status-dot ${isListening ? 'ir-status-dot--green' : 'ir-status-dot--gray'}`} />
-                {isListening ? 'Microphone active — listening' : 'Microphone inactive'}
+              <div className="ir-ai-label" style={{ marginBottom: '0.75rem' }}>Interview Status Panel</div>
+              <div className="ir-ai-status-row" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                <strong>Mic:</strong> {streamRef.current ? 'Connected' : 'Disconnected'}
               </div>
-              <div className="ir-ai-status-row" style={{ marginBottom: '0.5rem' }}>
-                <span className={`ir-status-dot ${isSpeaking ? 'ir-status-dot--blue' : 'ir-status-dot--gray'}`} />
-                {isSpeaking ? 'AI is speaking…' : 'AI idle'}
+              <div className="ir-ai-status-row" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                <strong>Recognition:</strong> {isListening ? 'Active' : 'Stopped'}
               </div>
-              <div className="ir-ai-status-row">
-                <span className={`ir-status-dot ${isThinking ? 'ir-status-dot--yellow' : 'ir-status-dot--gray'}`} />
-                {isThinking ? 'Generating next question…' : 'Ready'}
+              <div className="ir-ai-status-row" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                <strong>Transcript:</strong> {transcript || finalTranscript ? 'Receiving' : 'Idle'}
+              </div>
+              <div className="ir-ai-status-row" style={{ fontSize: '0.85rem' }}>
+                <strong>Provider:</strong> {currentProvider}
+              </div>
+            </div>
+
+            {/* Debug Panel */}
+            <div className="ir-ai-card" style={{ marginTop: '1rem', padding: '1rem', background: '#0d1426', borderRadius: '1rem', border: '1px dashed #ef4444' }}>
+              <div className="ir-ai-label" style={{ color: '#ef4444', marginBottom: '0.75rem' }}>DEBUG PANEL</div>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                <div>Speech Status: {isListening ? 'Active' : 'Inactive'}</div>
+                <div>Transcript Length: {(transcript.length + finalTranscript.length) || 0}</div>
+                <div>Questions Asked: {conversation.filter(m => m.role === 'ai').length}</div>
+                <div>Answers Saved: {conversation.filter(m => m.role === 'candidate').length}</div>
+                <div>Current Provider: {currentProvider}</div>
+                <div>Session ID: {sessionId}</div>
               </div>
             </div>
           </aside>
@@ -868,7 +893,7 @@ function InterviewRoomContent() {
               </div>
               
               {speechError && (
-                <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500, whiteSpace: 'pre-wrap' }}>
                   ⚠️ {speechError}
                 </div>
               )}
@@ -888,6 +913,25 @@ function InterviewRoomContent() {
                   </span>
                 )}
               </div>
+
+              <textarea
+                value={manualAnswer}
+                onChange={(e) => setManualAnswer(e.target.value)}
+                placeholder="Type your answer manually here if speech recognition fails..."
+                disabled={isSpeaking || isThinking}
+                style={{
+                  width: '100%',
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#e2e8f0',
+                  minHeight: '80px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical'
+                }}
+              />
             </div>
 
           </section>
@@ -903,7 +947,7 @@ function InterviewRoomContent() {
 
             <button
               className="ir-submit-btn"
-              disabled={!finalTranscript && !transcript || isSpeaking || isThinking}
+              disabled={(!finalTranscript && !transcript && !manualAnswer) || isSpeaking || isThinking}
               onClick={handleManualSubmit}
             >
               Submit Answer

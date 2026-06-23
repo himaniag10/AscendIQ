@@ -12,6 +12,9 @@ import SessionSummaryPage from '../pages/Interview/SessionSummaryPage.jsx';
 import InterviewRoomPage from '../pages/Interview/InterviewRoomPage.jsx';
 import { ProtectedRoute } from './ProtectedRoute.jsx';
 import { PublicRoute } from './PublicRoute.jsx';
+import GoalsPage from '../pages/Goals/GoalsPage.jsx';
+import InterviewHistoryPage from '../pages/Interview/InterviewHistoryPage.jsx';
+import TranscriptPage from '../pages/Interview/TranscriptPage.jsx';
 
 export function AppRoutes() {
   return (
@@ -38,6 +41,22 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/goals"
+        element={
+          <ProtectedRoute>
+            <GoalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interviews"
+        element={
+          <ProtectedRoute>
+            <InterviewHistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/interview/learning"
         element={
           <ProtectedRoute>
@@ -58,6 +77,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <SessionSummaryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/interview/transcript/:sessionId"
+        element={
+          <ProtectedRoute>
+            <TranscriptPage />
           </ProtectedRoute>
         }
       />

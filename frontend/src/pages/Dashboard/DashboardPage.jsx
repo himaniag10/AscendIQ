@@ -7,14 +7,7 @@ import { profileService } from '../../services/profile.service.js';
 import { interviewService } from '../../services/interview.service.js';
 import { useEffect, useState } from 'react';
 
-const sidebarItems = [
-  ['Dashboard', '/dashboard'],
-  ['Interviews', '/dashboard'],
-  ['Analytics', '/dashboard'],
-  ['Goals', '/dashboard'],
-  ['Profile', '/profile'],
-  ['Settings', '/profile'],
-];
+import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 
 function ModeCard({ mode, title, description, badge, icon, gradient, to }) {
   const navigate = useNavigate();
@@ -181,34 +174,8 @@ function DashboardPage() {
           border-color: transparent;
         }
       `}</style>
+      <DashboardLayout>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[260px_1fr] lg:px-8">
-        {/* Sidebar */}
-        <aside className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 shadow-sm lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
-          <div className="rounded-xl bg-[var(--theme-surface-alt)] p-4">
-            <p className="text-xs font-semibold uppercase text-[var(--theme-muted-text)]">Workspace</p>
-            <p className="mt-2 truncate font-semibold text-[var(--theme-text)]">{user?.name || 'AscendIQ User'}</p>
-            <p className="mt-1 truncate text-sm text-[var(--theme-secondary-text)]">{user?.email}</p>
-          </div>
-          <nav className="mt-4 space-y-1">
-            {sidebarItems.map(([item, href]) => (
-              <Link
-                key={item}
-                to={href}
-                className={`block rounded-lg px-3 py-3 text-sm font-medium transition ${
-                  item === 'Dashboard'
-                    ? 'bg-[var(--theme-primary)] text-white'
-                    : 'text-[var(--theme-secondary-text)] hover:bg-[var(--theme-surface-alt)] hover:text-[var(--theme-text)]'
-                }`}
-              >
-                {item}
-              </Link>
-            ))}
-          </nav>
-        </aside>
-
-        {/* Main */}
-        <div className="space-y-6">
           {/* Welcome header */}
           <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
@@ -380,8 +347,7 @@ function DashboardPage() {
               </div>
             </div>
           </section>
-        </div>
-      </div>
+      </DashboardLayout>
     </>
   );
 }
