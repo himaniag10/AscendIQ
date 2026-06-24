@@ -5,6 +5,16 @@ import connectDatabase from './src/config/db.js';
 
 const PORT = process.env.PORT || 5000;
 
+console.log("\n========== AI PROVIDERS ==========");
+console.log(`Groq: ${process.env.GROQ_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
+console.log(`Gemini: ${process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
+console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
+console.log("==================================\n");
+
+if (!process.env.GROQ_API_KEY) {
+  throw new Error("GROQ_API_KEY missing from environment variables");
+}
+
 // Initialize Database connection placeholder
 await connectDatabase();
 

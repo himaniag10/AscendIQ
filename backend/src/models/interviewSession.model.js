@@ -97,6 +97,14 @@ const interviewSessionSchema = new mongoose.Schema(
       enum: ['draft', 'scheduled', 'completed', 'abandoned'],
       default: 'draft',
     },
+    analysisInProgress: {
+      type: Boolean,
+      default: false,
+    },
+    analysisCompleted: {
+      type: Boolean,
+      default: false,
+    },
     startedAt: {
       type: Date,
       default: null,

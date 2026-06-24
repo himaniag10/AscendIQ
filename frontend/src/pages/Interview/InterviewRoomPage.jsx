@@ -98,6 +98,15 @@ function InterviewRoomContent() {
   const [manualAnswer, setManualAnswer] = useState(''); // fallback input
   const [interviewState, setInterviewState] = useState('GENERATING_NEXT_QUESTION');
   const [currentProvider, setCurrentProvider] = useState('Loading...');
+  const [recognitionRunning, setRecognitionRunning] = useState(false);
+  const [micPermission, setMicPermission] = useState('unknown');
+  
+  // Advanced Telemetry State
+  const [lastEventName, setLastEventName] = useState('none');
+  const [lastErrorObj, setLastErrorObj] = useState(null);
+  const [errorTimestamp, setErrorTimestamp] = useState(null);
+  const [testTranscript, setTestTranscript] = useState('');
+
   const isListening = interviewState === 'WAITING_FOR_CANDIDATE';
   const isSpeaking = interviewState === 'AI_SPEAKING';
   const isThinking = interviewState === 'PROCESSING_ANSWER';
@@ -117,6 +126,16 @@ function InterviewRoomContent() {
 
   // Conversation scroll
   const conversationEndRef = useRef(null);
+
+  // ── Permissions ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' }).then(res => {
+        setMicPermission(res.state);
+        res.onchange = () => setMicPermission(res.state);
+      }).catch(() => setMicPermission('unsupported'));
+    }
+  }, []);
 
   // ── Fetch session if not in router state ─────────────────────────────────
   useEffect(() => {
@@ -178,6 +197,7 @@ function InterviewRoomContent() {
   fns.current.stopListening = () => {
     console.log('Recognition Ended');
     clearTimeout(silenceTimerRef.current);
+    setRecognitionRunning(false);
     recognitionRef.current?.stop();
     // Do not set state here, let the caller transition state (e.g. to PROCESSING_ANSWER)
   };
@@ -250,66 +270,107 @@ function InterviewRoomContent() {
       console.log('SpeechRecognition Supported');
     }
     if (isListening || interviewState === 'INTERVIEW_COMPLETE') return;
+    
+    if (recognitionRunning) {
+      console.warn('Recognition already running. Preventing duplicate start.');
+      return;
+    }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognitionRef.current = recognition;
-
-    let accumulated = '';
-
-    recognition.onstart = () => {
-      console.log('Recognition Started');
-    };
-
-    recognition.onaudiostart = () => {};
-    recognition.onsoundstart = () => {};
-    recognition.onspeechstart = () => console.log('Speech Detected');
-
-    recognition.onresult = (event) => {
-      console.log('Transcript Received');
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          accumulated += result[0].transcript + ' ';
-        } else {
-          interim += result[0].transcript;
-        }
-      }
-      console.log('Transcript Updated');
+    if (!recognitionRef.current) {
+      console.log('Recognition Created');
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
       
-      setFinalTranscript(accumulated);
-      setTranscript(interim);
+      recognition.onstart = () => {
+        console.log('Recognition Started');
+        setLastEventName('onstart');
+        setRecognitionRunning(true);
+      };
 
-      clearTimeout(silenceTimerRef.current);
-      if (accumulated.trim() || interim.trim()) {
-        silenceTimerRef.current = setTimeout(() => {
-          if (accumulated.trim()) {
-            console.log('Auto submit triggered');
-            fns.current.submitAnswer(accumulated.trim());
+      recognition.onaudiostart = () => {
+        console.log('Audio Started');
+        setLastEventName('onaudiostart');
+      };
+
+      recognition.onsoundstart = () => {
+        console.log('Sound Started');
+        setLastEventName('onsoundstart');
+      };
+
+      recognition.onspeechstart = () => {
+        console.log('Speech Detected');
+        setLastEventName('onspeechstart');
+      };
+
+      recognition.onresult = (event) => {
+        console.log('Transcript Received');
+        setLastEventName('onresult');
+        let interim = '';
+        let accumulated = fns.current.accumulatedTranscript || '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            accumulated += result[0].transcript + ' ';
+            fns.current.accumulatedTranscript = accumulated;
+          } else {
+            interim += result[0].transcript;
           }
-        }, SILENCE_DELAY_MS);
-      }
-    };
+        }
+        console.log('Transcript Stored');
+        
+        // If in test mode, update test transcript only
+        if (fns.current.isTestingMic) {
+          setTestTranscript(accumulated + interim);
+          return;
+        }
 
-    recognition.onerror = (e) => {
-      console.log('Recognition Error');
-      const errMsg = e.error; // e.g. "network", "not-allowed", "no-speech"
-      setSpeechError(`Speech Recognition Error: ${errMsg}`);
-      if (e.error !== 'no-speech') {
-        console.error(`Speech Recognition Error: ${errMsg}`);
-      }
-    };
+        setFinalTranscript(accumulated);
+        setTranscript(interim);
 
-    recognition.onend = () => {
-      console.log('Recognition Ended');
-      // Do not transition state to false if it's meant to be something else.
-    };
+        clearTimeout(silenceTimerRef.current);
+        if (accumulated.trim() || interim.trim()) {
+          silenceTimerRef.current = setTimeout(() => {
+            if (fns.current.accumulatedTranscript?.trim()) {
+              console.log('Auto submit triggered');
+              fns.current.submitAnswer(fns.current.accumulatedTranscript.trim());
+            }
+          }, SILENCE_DELAY_MS);
+        }
+      };
+
+      recognition.onerror = (e) => {
+        console.log('Recognition Error');
+        setLastEventName('onerror');
+        setLastErrorObj({
+          error: e.error,
+          message: e.message,
+          type: e.type
+        });
+        setErrorTimestamp(new Date().toISOString());
+        
+        const errMsg = e.error; 
+        setSpeechError(`Speech Recognition Error: ${errMsg}`);
+        if (e.error !== 'no-speech') {
+          console.error(`Speech Recognition Error:`, e);
+        }
+        setRecognitionRunning(false);
+      };
+
+      recognition.onend = () => {
+        console.log('Recognition Ended');
+        setLastEventName('onend');
+        setRecognitionRunning(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
 
     try {
-      recognition.start();
+      fns.current.accumulatedTranscript = '';
+      recognitionRef.current.start();
       setInterviewState('WAITING_FOR_CANDIDATE');
       setFinalTranscript('');
       setTranscript('');
@@ -317,6 +378,25 @@ function InterviewRoomContent() {
       console.error('[Speech] Failed to start recognition:', err);
       setSpeechError(`Failed to start recognition: ${err.message}`);
     }
+  };
+
+  fns.current.testMicrophone = () => {
+    fns.current.stopListening();
+    fns.current.isTestingMic = true;
+    setTestTranscript('');
+    setTimeout(() => {
+      try {
+        fns.current.accumulatedTranscript = '';
+        recognitionRef.current?.start() || fns.current.startListening();
+      } catch (err) {
+        setSpeechError(`Test Start Failed: ${err.message}`);
+      }
+    }, 100);
+  };
+
+  fns.current.stopTestMicrophone = () => {
+    fns.current.isTestingMic = false;
+    fns.current.stopListening();
   };
 
   fns.current.abortInterviewGracefully = (closingMessage) => {
@@ -821,14 +901,38 @@ function InterviewRoomContent() {
 
             {/* Debug Panel */}
             <div className="ir-ai-card" style={{ marginTop: '1rem', padding: '1rem', background: '#0d1426', borderRadius: '1rem', border: '1px dashed #ef4444' }}>
-              <div className="ir-ai-label" style={{ color: '#ef4444', marginBottom: '0.75rem' }}>DEBUG PANEL</div>
+              <div className="ir-ai-label" style={{ color: '#ef4444', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                DEBUG PANEL
+                <div>
+                  <button onClick={fns.current.testMicrophone} style={{ background: '#3b82f6', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '0.2rem', fontSize: '0.7rem', border: 'none', cursor: 'pointer', marginRight: '0.5rem' }}>Test Mic</button>
+                  <button onClick={fns.current.stopTestMicrophone} style={{ background: '#ef4444', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '0.2rem', fontSize: '0.7rem', border: 'none', cursor: 'pointer' }}>Stop</button>
+                </div>
+              </div>
               <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
                 <div>Speech Status: {isListening ? 'Active' : 'Inactive'}</div>
-                <div>Transcript Length: {(transcript.length + finalTranscript.length) || 0}</div>
+                <div>Recognition Running: {recognitionRunning ? 'Yes' : 'No'}</div>
+                <div>Mic Permission: {micPermission}</div>
+                <div>Transcript Length: {conversation.filter(m => m.role === 'candidate').length}</div>
                 <div>Questions Asked: {conversation.filter(m => m.role === 'ai').length}</div>
                 <div>Answers Saved: {conversation.filter(m => m.role === 'candidate').length}</div>
                 <div>Current Provider: {currentProvider}</div>
                 <div>Session ID: {sessionId}</div>
+                <hr style={{ borderColor: '#ef4444', margin: '0.5rem 0' }} />
+                <div>Last Event: {lastEventName}</div>
+                {lastErrorObj && (
+                  <>
+                    <div style={{ color: '#ef4444' }}>Last Error: {lastErrorObj.error}</div>
+                    <div style={{ color: '#ef4444' }}>Error Msg: {lastErrorObj.message || 'N/A'}</div>
+                    <div style={{ color: '#ef4444' }}>Error Type: {lastErrorObj.type}</div>
+                    <div style={{ color: '#ef4444' }}>Time: {errorTimestamp}</div>
+                  </>
+                )}
+                {testTranscript && (
+                  <>
+                    <hr style={{ borderColor: '#ef4444', margin: '0.5rem 0' }} />
+                    <div style={{ color: '#10b981' }}>Test Transcript: {testTranscript}</div>
+                  </>
+                )}
               </div>
             </div>
           </aside>

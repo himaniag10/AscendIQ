@@ -341,35 +341,50 @@ export async function getMessages(req, res, next) {
 export async function analyzeInterview(req, res, next) {
   try {
     const { sessionId } = req.params;
-    const session = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
     
-    if (!session) {
+    // Check baseline before attempting atomic lock
+    const initialSession = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
+    if (!initialSession) {
       return res.status(404).json({ success: false, message: 'Interview session not found.' });
     }
-    
-    if (session.status !== 'completed') {
+    if (initialSession.status !== 'completed') {
       return res.status(400).json({ success: false, message: 'Session is not completed yet.' });
     }
+    if (initialSession.analysisCompleted || (initialSession.readiness && initialSession.readiness.overallScore > 0)) {
+      return res.status(200).json({ success: true, session: initialSession });
+    }
 
-    // Check if already analyzed to prevent duplicate aggregation
-    if (session.readiness && session.readiness.overallScore > 0) {
-      return res.status(200).json({ success: true, session });
+    // Atomic Lock Acquisition
+    const session = await InterviewSession.findOneAndUpdate(
+      { _id: sessionId, userId: req.user._id, analysisInProgress: false, analysisCompleted: false },
+      { $set: { analysisInProgress: true } },
+      { new: true }
+    );
+
+    if (!session) {
+      // Either not found or already locked
+      const checkSession = await InterviewSession.findOne({ _id: sessionId, userId: req.user._id });
+      if (checkSession?.analysisCompleted) {
+        return res.status(200).json({ success: true, session: checkSession });
+      }
+      if (checkSession?.analysisInProgress) {
+        return res.status(409).json({ success: false, message: 'Analysis is already in progress.' });
+      }
+      return res.status(404).json({ success: false, message: 'Interview session not found or already processed.' });
     }
 
     console.log('INTERVIEW_COMPLETED');
     console.log('ANALYSIS_STARTED');
 
-    // Use full session transcript for accurate analysis instead of refetching
-    // We pass it to the generator
-    
-    // 1. Generate Interview Analysis
     let analysis;
     try {
       analysis = await generateInterviewAnalysis(session, session.transcript);
       console.log('ANALYSIS_COMPLETED');
     } catch (analysisErr) {
-      const errorMsg = 'Analysis unavailable.\nAI provider failed to evaluate this interview.';
-      console.error(errorMsg, analysisErr);
+      const errorMsg = `Analysis unavailable.\nAI provider failed to evaluate this interview. Error: ${analysisErr.message}`;
+      console.error(errorMsg);
+      // Release lock on failure
+      await InterviewSession.findByIdAndUpdate(session._id, { $set: { analysisInProgress: false } });
       return res.status(503).json({
         success: false,
         message: errorMsg,
@@ -386,15 +401,22 @@ export async function analyzeInterview(req, res, next) {
     );
     analysis.readiness.overallScore = overallScore;
     console.log('READINESS_CALCULATED');
-
-    // 2. Save Analysis to Session
-    session.readiness = analysis.readiness;
-    session.feedback = analysis.feedback;
-    
     console.log('WEAKNESSES_EXTRACTED');
     
-    // Try to update session
-    await session.save();
+    // Atomically Update Session with Analysis and Release Lock
+    const updatedSession = await InterviewSession.findOneAndUpdate(
+      { _id: session._id },
+      { 
+        $set: { 
+          readiness: analysis.readiness,
+          feedback: analysis.feedback,
+          analysisInProgress: false,
+          analysisCompleted: true
+        } 
+      },
+      { new: true }
+    );
+    
     console.log('ANALYSIS_SAVED');
     console.log('INTERVIEW_SAVED');
 

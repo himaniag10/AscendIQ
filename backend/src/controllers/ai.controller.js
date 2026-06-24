@@ -1,4 +1,4 @@
-import { getActiveProvider } from '../services/aiProvider.service.js';
+import { getActiveProvider, callGroq } from '../services/aiProvider.service.js';
 
 /**
  * GET /api/ai/status
@@ -15,5 +15,18 @@ export async function getAiStatus(req, res, next) {
     });
   } catch (err) {
     next(err);
+  }
+}
+
+export async function testGroq(req, res, next) {
+  try {
+    const text = await callGroq('Reply with only OK');
+    res.status(200).json({
+      success: true,
+      provider: "groq",
+      response: text
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 }

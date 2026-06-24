@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { interviewService } from '../../services/interview.service.js';
 import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
@@ -116,12 +116,17 @@ function SessionSummaryPage() {
     }
   };
 
+  const hasTriggeredAnalysis = React.useRef(false);
+
   useEffect(() => {
     interviewService.getSession(sessionId)
       .then((data) => {
         setSession(data.session);
-        if (data.session.status === 'completed' && (!data.session.readiness || data.session.readiness.overallScore === 0)) {
-          triggerAnalysis(data.session._id);
+        if (data.session.status === 'completed' && (!data.session.readiness || data.session.readiness.overallScore === 0) && !data.session.analysisCompleted) {
+          if (!hasTriggeredAnalysis.current) {
+            hasTriggeredAnalysis.current = true;
+            triggerAnalysis(data.session._id);
+          }
         }
       })
       .catch((err) => setError(err?.response?.data?.message || err.message || 'Session not found.'))
@@ -131,12 +136,23 @@ function SessionSummaryPage() {
   const triggerAnalysis = async (id) => {
     setAnalyzing(true);
     setAnalysisError('');
+    console.log('ANALYZE_TRIGGERED_FROM: useEffect');
     try {
       const data = await interviewService.analyzeInterview(id);
       if (data.success) {
         setSession(data.session);
       }
     } catch (err) {
+      if (err?.response?.status === 409 || err?.response?.status >= 500) {
+        // Fallback: If 409 (locked) or 500 (failed analysis), double check if analysis succeeded in DB
+        try {
+          const check = await interviewService.getSession(id);
+          if (check.session.analysisCompleted || (check.session.readiness && check.session.readiness.overallScore > 0)) {
+            setSession(check.session);
+            return;
+          }
+        } catch (_) {}
+      }
       setAnalysisError(err?.response?.data?.message || 'Analysis unavailable.\nAI provider failed to evaluate this interview.');
     } finally {
       setAnalyzing(false);

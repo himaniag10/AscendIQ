@@ -21,13 +21,21 @@ export function getActiveProvider() {
 /**
  * Call Groq API
  */
-async function callGroq(prompt) {
+export async function callGroq(prompt) {
+  console.log("INSIDE GROQ SERVICE");
+  console.log("process.env.GROQ_API_KEY exists:", !!process.env.GROQ_API_KEY);
+  console.log("length:", process.env.GROQ_API_KEY?.length);
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('GROQ_API_KEY is not configured');
 
   const startTime = Date.now();
   console.log('[AI Provider] Attempting Groq...');
+  console.log('Creating Groq client...');
 
+  console.log('PROVIDER_SELECTED');
+  console.log('MODEL_USED:', GROQ_MODEL);
+  console.log('PROMPT_SENT');
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: {
@@ -41,6 +49,7 @@ async function callGroq(prompt) {
       max_tokens: 1024
     })
   });
+  console.log('RESPONSE_RECEIVED');
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -79,11 +88,15 @@ async function callGemini(prompt) {
     ],
   };
 
+  console.log('PROVIDER_SELECTED');
+  console.log('MODEL_USED: gemini-2.5-flash');
+  console.log('PROMPT_SENT');
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
   });
+  console.log('RESPONSE_RECEIVED');
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -108,6 +121,9 @@ async function callOpenRouter(prompt) {
   const startTime = Date.now();
   console.log('[AI Provider] Attempting OpenRouter...');
 
+  console.log('PROVIDER_SELECTED');
+  console.log('MODEL_USED:', OPENROUTER_MODEL);
+  console.log('PROMPT_SENT');
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
     headers: {
@@ -123,6 +139,7 @@ async function callOpenRouter(prompt) {
       max_tokens: 1024
     })
   });
+  console.log('RESPONSE_RECEIVED');
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -141,21 +158,21 @@ async function callOpenRouter(prompt) {
  * Unified generation with fallback logic
  */
 async function generateContent(prompt) {
-  console.log('Using Gemini');
+  console.log('Using Groq');
   try {
-    currentActiveProvider = 'Gemini';
-    return await callGemini(prompt);
-  } catch (geminiError) {
-    console.log('Gemini failed');
-    console.error(`Gemini Error details: ${geminiError.message}`);
+    currentActiveProvider = 'Groq';
+    return await callGroq(prompt);
+  } catch (groqError) {
+    console.log('Groq failed');
+    console.error(`Grok Error details: ${groqError.message}`);
     
-    console.log('Switching to Grok');
+    console.log('Switching to Gemini');
     try {
-      currentActiveProvider = 'Groq';
-      return await callGroq(prompt);
-    } catch (groqError) {
-      console.log('Grok failed');
-      console.error(`Grok Error details: ${groqError.message}`);
+      currentActiveProvider = 'Gemini';
+      return await callGemini(prompt);
+    } catch (geminiError) {
+      console.log('Gemini failed');
+      console.error(`Gemini Error details: ${geminiError.message}`);
       
       console.log('Switching to OpenRouter');
       try {
@@ -167,7 +184,7 @@ async function generateContent(prompt) {
         console.log('OpenRouter failed');
         console.error(`OpenRouter Error details: ${openRouterError.message}`);
         console.error(`[AI Provider] All providers failed.`);
-        throw new Error('AI Services temporarily unavailable. Please try again later.');
+        throw new Error(openRouterError.message);
       }
     }
   }
@@ -253,6 +270,7 @@ CRITICAL RULES:
 - Never ask two questions in the nextQuestion string.
 - You MUST provide exactly ONE single question. NEVER combine multiple questions.
 - Provide exactly 1 feedback statement and 1 next question. Maximum.
+- Do NOT put any questions in the "feedback" string. The "feedback" MUST be a statement only.
 - Do NOT wrap the response in markdown blocks. Just return raw JSON.`;
 
   try {
