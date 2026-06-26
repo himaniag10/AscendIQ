@@ -19,6 +19,7 @@ import {
   validateGoogleLogin,
 } from '../validators/auth.validator.js';
 import { protect } from '../middleware/auth.middleware.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -30,20 +31,20 @@ const router = express.Router();
 router.post('/register', validateRegister, register);
 
 // POST /api/auth/login — Authenticate + receive JWT
-router.post('/login', validateLogin, login);
+router.post('/login', authLimiter, validateLogin, login);
 
 // POST /api/auth/verify-otp — Verify account with 6-digit OTP
-router.post('/verify-otp', validateVerifyOTP, verifyOTP);
+router.post('/verify-otp', authLimiter, validateVerifyOTP, verifyOTP);
 
 // POST /api/auth/resend-otp — Resend verification OTP
-router.post('/resend-otp', validateResendOTP, resendOTP);
+router.post('/resend-otp', authLimiter, validateResendOTP, resendOTP);
 
 // POST /api/auth/forgot-password — Request password recovery OTP
-router.post('/forgot-password', validateForgotPassword, forgotPassword);
+router.post('/forgot-password', authLimiter, validateForgotPassword, forgotPassword);
 
 // POST /api/auth/reset-password — Reset password using email and OTP
-router.post('/reset-password', validateResetPassword, resetPassword);
-router.post('/google-login', validateGoogleLogin, googleLogin);
+router.post('/reset-password', authLimiter, validateResetPassword, resetPassword);
+router.post('/google-login', authLimiter, validateGoogleLogin, googleLogin);
 
 // -----------------------------------------------------------
 // Protected Routes (valid JWT required)

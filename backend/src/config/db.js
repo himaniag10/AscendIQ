@@ -13,7 +13,19 @@ const connectDB = async () => {
       throw new Error('MongoDB connection URI is missing in the environment variables.');
     }
 
-    const conn = await mongoose.connect(mongoURI);
+    const conn = await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn('MongoDB disconnected! Attempting to reconnect...');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('MongoDB reconnected successfully.');
+    });
 
     console.log(`=============================================`);
     console.log(`  MongoDB Connected Successfully!`);

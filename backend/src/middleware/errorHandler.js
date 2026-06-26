@@ -10,6 +10,11 @@ const errorHandler = (err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const status = err.status || 'error';
 
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`[ERROR] ${statusCode} - ${err.message}`);
+    console.error(err.stack);
+  }
+
   // Format standard API error response
   res.status(statusCode).json({
     success: false,

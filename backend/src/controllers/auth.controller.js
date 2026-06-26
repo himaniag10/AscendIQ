@@ -17,6 +17,18 @@ const formatUser = (user) => ({
 });
 
 // -----------------------------------------------------------
+// Helper: Set secure HTTP-only cookie
+// -----------------------------------------------------------
+const setTokenCookie = (res, token) => {
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+};
+
+// -----------------------------------------------------------
 // @desc    Register a new user + send email verification OTP
 // @route   POST /api/auth/register
 // @access  Public
@@ -48,6 +60,8 @@ export const login = async (req, res, next) => {
 
     const user = await authService.loginUser(email, password);
     const token = authService.generateToken(user._id);
+    
+    setTokenCookie(res, token);
 
     res.status(200).json({
       success: true,
@@ -70,6 +84,9 @@ export const googleLogin = async (req, res, next) => {
     }
     const user = await authService.handleGoogleLogin(idToken);
     const token = authService.generateToken(user._id);
+    
+    setTokenCookie(res, token);
+    
     res.status(200).json({
       success: true,
       message: 'Google login successful.',
@@ -126,6 +143,9 @@ export const verifyOTP = async (req, res, next) => {
     }
 
     const token = authService.generateToken(result.user._id);
+    
+    setTokenCookie(res, token);
+    
     res.status(200).json({
       success: true,
       message: 'Email verified successfully. Welcome to AscendIQ!',
@@ -188,6 +208,8 @@ export const resetPassword = async (req, res, next) => {
 
     const user = await authService.resetPassword(email, otp, password);
     const jwtToken = authService.generateToken(user._id);
+    
+    setTokenCookie(res, jwtToken);
 
     res.status(200).json({
       success: true,
