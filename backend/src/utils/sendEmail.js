@@ -1,4 +1,8 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
+
+// Force IPv4 for DNS resolution (fixes ENETUNREACH IPv6 routing errors on platforms like Render)
+dns.setDefaultResultOrder('ipv4first');
 
 /**
  * sendEmail - Utility function to send emails via SMTP using nodemailer.
