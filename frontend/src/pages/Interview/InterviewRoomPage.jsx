@@ -351,7 +351,13 @@ function InterviewRoomContent() {
         });
         setErrorTimestamp(new Date().toISOString());
         
-        const errMsg = e.error; 
+        let errMsg = e.error; 
+        if (e.error === 'network') {
+          errMsg = 'Network blocked. If you are using Brave or an Adblocker, please use Google Chrome or Edge instead as they block the speech API.';
+        } else if (e.error === 'not-allowed') {
+          errMsg = 'Microphone access denied. Please allow microphone permissions.';
+        }
+        
         setSpeechError(`Speech Recognition Error: ${errMsg}`);
         if (e.error !== 'no-speech') {
           console.error(`Speech Recognition Error:`, e);
