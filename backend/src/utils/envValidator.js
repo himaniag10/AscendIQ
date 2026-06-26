@@ -6,7 +6,7 @@ export const validateEnv = () => {
   const requiredVars = [
     'MONGODB_URI',
     'JWT_SECRET',
-    'JWT_EXPIRE',
+    'JWT_EXPIRES_IN',
     'FRONTEND_URL',
     'SMTP_HOST',
     'SMTP_PORT',
