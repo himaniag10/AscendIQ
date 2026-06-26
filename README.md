@@ -295,7 +295,7 @@ flowchart TD
 
 ## 👨‍💻 Contributors
 
-- [Your Name/Handle] - *Lead Developer*
+- Himani Agarwal - *Lead Developer*
 
 *(Feel free to contribute by opening an issue or submitting a pull request!)*
 
