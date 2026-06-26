@@ -82,11 +82,18 @@ export const registerUser = async (name, email, password) => {
     </div>
   `;
 
-  await sendEmail({
-    email: user.email,
-    subject: 'AscendIQ Email Verification Code',
-    message,
-  });
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'AscendIQ Email Verification Code',
+      message,
+    });
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+    const err = new Error('Failed to send verification email. Please try registering again.');
+    err.statusCode = 500;
+    throw err;
+  }
 
   return user;
 };
